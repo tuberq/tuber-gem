@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class Beaneater
+class Russet
   # Represents job related commands.
   class Job
 
@@ -11,7 +11,7 @@ class Beaneater
     # @!attribute reserved
     #   @return [Boolean] whether the job has been reserved.
     # @!attribute client
-    #   @return [Beaneater] returns the client instance
+    #   @return [Russet] returns the client instance
     attr_reader :id, :body, :reserved, :client
 
 
@@ -51,7 +51,7 @@ class Beaneater
     # @option options [Integer] delay Assign new delay to job
     # @return [Hash{Symbol => String,Number}] Beanstalkd response for the command.
     # @example
-    #   @beaneater.jobs.find(123).release(:pri => 10, :delay => 5)
+    #   @russet.jobs.find(123).release(:pri => 10, :delay => 5)
     #     # => {:status=>"RELEASED", :body=>nil}
     #
     # @api public
@@ -66,7 +66,7 @@ class Beaneater
     #
     # @return [Hash{Symbol => String,Number}] Beanstalkd response for the command.
     # @example
-    #   @beaneater.jobs.find(123).touch
+    #   @russet.jobs.find(123).touch
     #     # => {:status=>"TOUCHED", :body=>nil}
     #
     # @api public
@@ -78,7 +78,7 @@ class Beaneater
     #
     # @return [Hash{Symbol => String,Number}] Beanstalkd response for the command.
     # @example
-    #   @beaneater.jobs.find(123).delete
+    #   @russet.jobs.find(123).delete
     #     # => {:status=>"DELETED", :body=>nil}
     #
     # @api public
@@ -90,7 +90,7 @@ class Beaneater
     #
     # @return [Hash{Symbol => String,Number}] Beanstalkd response for the command.
     # @example
-    #   @beaneater.jobs.find(123).kick
+    #   @russet.jobs.find(123).kick
     #     # => {:status=>"KICKED", :body=>nil}
     #
     # @api public
@@ -100,9 +100,9 @@ class Beaneater
 
     # Sends command to get stats about job.
     #
-    # @return [Beaneater::StatStruct] struct filled with relevant job stats
+    # @return [Russet::StatStruct] struct filled with relevant job stats
     # @example
-    #   @beaneater.jobs.find(123).stats
+    #   @russet.jobs.find(123).stats
     #   @job.stats.tube # => "some-tube"
     #
     # @api public
@@ -115,7 +115,7 @@ class Beaneater
     #
     # @return [Boolean] Returns true if the job is in a reserved state
     # @example
-    #   @beaneater.jobs.find(123).reserved?
+    #   @russet.jobs.find(123).reserved?
     #
     # @api public
     def reserved?
@@ -126,12 +126,12 @@ class Beaneater
     #
     # @return [Boolean] Returns true if the job still exists
     # @example
-    #   @beaneater.jobs.find(123).exists?
+    #   @russet.jobs.find(123).exists?
     #
     # @api public
     def exists?
       !self.stats.nil?
-    rescue Beaneater::NotFoundError
+    rescue Russet::NotFoundError
       false
     end
 
@@ -139,7 +139,7 @@ class Beaneater
     #
     # @return [String] The name of the tube for this job
     # @example
-    #   @beaneater.jobs.find(123).tube
+    #   @russet.jobs.find(123).tube
     #     # => "some-tube"
     #
     # @api public
@@ -151,7 +151,7 @@ class Beaneater
     #
     # @return [Integer] The ttr of this job
     # @example
-    #   @beaneater.jobs.find(123).ttr
+    #   @russet.jobs.find(123).ttr
     #     # => 123
     #
     # @api public
@@ -163,7 +163,7 @@ class Beaneater
     #
     # @return [Integer] The pri of this job
     # @example
-    #   @beaneater.jobs.find(123).pri
+    #   @russet.jobs.find(123).pri
     #     # => 1
     #
     def pri
@@ -174,7 +174,7 @@ class Beaneater
     #
     # @return [Integer] The delay of this job
     # @example
-    #   @beaneater.jobs.find(123).delay
+    #   @russet.jobs.find(123).delay
     #     # => 5
     #
     def delay
@@ -185,11 +185,11 @@ class Beaneater
     #
     # @return [String] string representation
     # @example
-    #   @beaneater.jobs.find(123).to_s
-    #   @beaneater.jobs.find(123).inspect
+    #   @russet.jobs.find(123).to_s
+    #   @russet.jobs.find(123).inspect
     #
     def to_s
-      "#<Beaneater::Job id=#{id} body=#{body.inspect}>"
+      "#<Russet::Job id=#{id} body=#{body.inspect}>"
     end
     alias :inspect :to_s
 
@@ -213,7 +213,7 @@ class Beaneater
     #
     # @param [String] cmd Beanstalkd command to send.
     # @return [Hash{Symbol => String,Number}] Beanstalkd response for the command.
-    # @raise [Beaneater::JobNotReserved] Command cannot execute since job is not reserved.
+    # @raise [Russet::JobNotReserved] Command cannot execute since job is not reserved.
     # @example
     #   with_reserved("bury 26") { @reserved = false }
     #
@@ -223,4 +223,4 @@ class Beaneater
     end
 
   end # Job
-end # Beaneater
+end # Russet

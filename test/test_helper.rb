@@ -6,7 +6,7 @@ require 'coveralls'
 Coveralls.wear!
 require 'minitest/autorun'
 $:.unshift File.expand_path("../../lib")
-require 'beaneater'
+require 'russet'
 require 'timeout'
 begin
   require 'mocha/minitest'
@@ -34,7 +34,7 @@ class MiniTest::Unit::TestCase
     client ||= @beanstalk
 
     # Do not continue if it is a mock or the connection has been closed
-    return if !client.is_a?(Beaneater) || !client.connection.connection
+    return if !client.is_a?(Russet) || !client.connection.connection
 
     client.tubes.all.each do |tube|
       tube.clear

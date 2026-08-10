@@ -1,7 +1,11 @@
-# CHANGELOG for Beaneater
+# CHANGELOG for Russet
 
-## Unreleased
+Russet is a fork of [beaneater](https://github.com/beanstalkd/beaneater), taken at
+beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for reference.
 
+## 1.0.0 (unreleased)
+
+* **Renamed from `beaneater` to `russet`.** The `Beaneater` class is now `Russet`, and `require 'beaneater'` becomes `require 'russet'`. Nothing else changed in the rename — see "Migrating from beaneater" in the README.
 * Add `Jobs#touch_all` (Tuber 0.12.0+): one-command heartbeat for every job the connection holds, returning how many were still held
 * Add `Tube#flush_buried` (Tuber only): atomically deletes only the buried jobs in a tube, returning the count
 * Add optional long-poll `timeout` to `reserve_batch` (Tuber only): `tubes.reserve_batch(count, timeout)` blocks up to `timeout` seconds for the first job, then drains what's ready
@@ -23,7 +27,7 @@
 
 ## 1.1.2 (Oct 10 2022)
 
-* Fixes beaneater when used with Ruby 3.1 and YAML 4 (@pond)
+* Fixes russet when used with Ruby 3.1 and YAML 4 (@pond)
 
 ## 1.1.1 (April 27th 2021)
 
@@ -41,7 +45,7 @@
 
 ## 1.0.0 (April 26th 2015)
 
-* Beginning from version 1.0.0 the support for `Beaneater::Pool` has been dropped (@alup)
+* Beginning from version 1.0.0 the support for `Russet::Pool` has been dropped (@alup)
 * `Jobs#find_all` method has been removed, since it is no longer necessary after removing pool (@alup)
 * `Tubes` is now an enumerable allowing `tubes` to be handled as a collection (@Aethelflaed)
 
@@ -76,7 +80,7 @@
 
 ## 0.2.0 (Nov 12 2012)
 * Fix 1.8.7 compatibility issues
-* Add configuration block to beaneater and better job parsing
+* Add configuration block to russet and better job parsing
 * BREAKING: json jobs now return as string by default not hashes
 
 ## 0.1.2 (Nov 7 2012)

@@ -1,21 +1,21 @@
 # frozen_string_literal: true
 
-class Beaneater
+class Russet
   # Beanstalk tube which contains jobs which can be inserted, reserved, et al.
   class Tube
 
     # @!attribute name
     #   @return [String] name of the tube
     # @!attribute client
-    #   @return [Beaneater] returns the client instance
+    #   @return [Russet] returns the client instance
     attr_reader :name, :client
 
     # Fetches the specified tube.
     #
-    # @param [Beaneater] client The beaneater client instance.
+    # @param [Russet] client The russet client instance.
     # @param [String] name The name for this tube.
     # @example
-    #  Beaneater::Tube.new(@client, 'tube-name')
+    #  Russet::Tube.new(@client, 'tube-name')
     #
     def initialize(client, name)
       @client = client
@@ -25,7 +25,7 @@ class Beaneater
 
     # Delegates transmit to the connection object.
     #
-    # @see Beaneater::Connection#transmit
+    # @see Russet::Connection#transmit
     def transmit(command, options={})
       client.connection.transmit(command, **options)
     end
@@ -77,9 +77,9 @@ class Beaneater
     # Peek at next job within this tube in given `state`.
     #
     # @param [String] state The job state to peek at (`ready`, `buried`, `delayed`)
-    # @return [Beaneater::Job] The next job within this tube.
+    # @return [Russet::Job] The next job within this tube.
     # @example
-    #  @tube.peek(:ready) # => <Beaneater::Job id=5 body=foo>
+    #  @tube.peek(:ready) # => <Russet::Job id=5 body=foo>
     #
     # @api public
     def peek(state)
@@ -87,7 +87,7 @@ class Beaneater
         res = transmit("peek-#{state}")
         Job.new(client, res)
       end
-    rescue Beaneater::NotFoundError
+    rescue Russet::NotFoundError
       # Return nil if not found
       nil
     end
@@ -97,9 +97,9 @@ class Beaneater
     # @param [Integer] timeout Number of seconds before timing out
     # @param [Proc] block Callback to perform on reserved job
     # @yield [job] Job that was reserved.
-    # @return [Beaneater::Job] Job that was reserved.
+    # @return [Russet::Job] Job that was reserved.
     # @example
-    #  @tube.reserve # => <Beaneater::Job id=5 body=foo>
+    #  @tube.reserve # => <Russet::Job id=5 body=foo>
     #
     # @api public
     def reserve(timeout=nil, &block)
@@ -121,7 +121,7 @@ class Beaneater
 
     # Returns related stats for this tube.
     #
-    # @return [Beaneater::StatStruct] Struct of tube related values
+    # @return [Russet::StatStruct] Struct of tube related values
     # @example
     #  @tube.stats.current_jobs_delayed # => 24
     #
@@ -179,13 +179,13 @@ class Beaneater
         while job = self.peek(state.to_sym)
           begin
             job.delete
-          rescue Beaneater::UnexpectedResponse, Beaneater::NotFoundError
+          rescue Russet::UnexpectedResponse, Russet::NotFoundError
             # swallow any issues
           end
         end
       end
       client.tubes.ignore(name)
-    rescue Beaneater::NotIgnoredError
+    rescue Russet::NotIgnoredError
       # swallow any issues
     end
 
@@ -193,10 +193,10 @@ class Beaneater
     #
     # @return [String] Representation of tube including name.
     # @example
-    #  @tube.to_s # => "#<Beaneater::Tube name=foo>"
+    #  @tube.to_s # => "#<Russet::Tube name=foo>"
     #
     def to_s
-      "#<Beaneater::Tube name=#{name.inspect}>"
+      "#<Russet::Tube name=#{name.inspect}>"
     end
     alias :inspect :to_s
 
@@ -218,11 +218,11 @@ class Beaneater
       @mutex.unlock
     end
 
-    # Returns configuration options for beaneater
+    # Returns configuration options for russet
     #
-    # @return [Beaneater::Configuration] configuration object
+    # @return [Russet::Configuration] configuration object
     def config
-      Beaneater.configuration
+      Russet.configuration
     end
   end # Tube
-end # Beaneater
+end # Russet

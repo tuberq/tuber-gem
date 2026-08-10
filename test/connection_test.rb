@@ -4,12 +4,12 @@
 
 require File.expand_path('../test_helper', __FILE__)
 
-describe Beaneater::Connection do
+describe Russet::Connection do
 
   describe 'for #new' do
     before do
       @host = 'localhost'
-      @bc = Beaneater::Connection.new(@host)
+      @bc = Russet::Connection.new(@host)
     end
 
     it "should store address, host and port" do
@@ -30,11 +30,11 @@ describe Beaneater::Connection do
     end
 
     it "should raise on invalid connection" do
-      assert_raises(Beaneater::NotConnected) { Beaneater::Connection.new("localhost:8544") }
+      assert_raises(Russet::NotConnected) { Russet::Connection.new("localhost:8544") }
     end
 
     it "should support array connection to single connection" do
-      @bc2 = Beaneater::Connection.new([@host])
+      @bc2 = Russet::Connection.new([@host])
       assert_equal 'localhost', @bc.address
       assert_equal 'localhost', @bc.host
       assert_equal 11300, @bc.port
@@ -43,7 +43,7 @@ describe Beaneater::Connection do
 
   describe 'for timeout configuration' do
     after do
-      Beaneater.configure do |config|
+      Russet.configure do |config|
         config.connect_timeout = nil
         config.resolv_timeout  = nil
         config.read_timeout    = nil
@@ -54,7 +54,7 @@ describe Beaneater::Connection do
     it "should pass connect_timeout and resolv_timeout to TCPSocket.new on Ruby >= 3.0" do
       skip("connect_timeout/resolv_timeout kwargs require Ruby >= 3.0") if RUBY_VERSION < "3.0"
 
-      Beaneater.configure do |config|
+      Russet.configure do |config|
         config.connect_timeout = 2
         config.resolv_timeout  = 2
       end
@@ -62,14 +62,14 @@ describe Beaneater::Connection do
       real_socket = TCPSocket.new('localhost', 11300)
       TCPSocket.expects(:new).with('localhost', 11300, connect_timeout: 2, resolv_timeout: 2).returns(real_socket)
 
-      bc = Beaneater::Connection.new('localhost')
+      bc = Russet::Connection.new('localhost')
       assert_kind_of TCPSocket, bc.connection
     end
 
     it "should ignore connect_timeout and resolv_timeout on Ruby < 3.0" do
       skip("connect_timeout/resolv_timeout kwargs are supported on Ruby >= 3.0") if RUBY_VERSION >= "3.0"
 
-      Beaneater.configure do |config|
+      Russet.configure do |config|
         config.connect_timeout = 2
         config.resolv_timeout  = 4
       end
@@ -77,17 +77,17 @@ describe Beaneater::Connection do
       real_socket = TCPSocket.new('localhost', 11300)
       TCPSocket.expects(:new).with('localhost', 11300).returns(real_socket)
 
-      bc = Beaneater::Connection.new('localhost')
+      bc = Russet::Connection.new('localhost')
       assert_same real_socket, bc.connection
     end
 
     it "should set SO_RCVTIMEO and SO_SNDTIMEO when read/write timeouts are configured" do
-      Beaneater.configure do |config|
+      Russet.configure do |config|
         config.read_timeout  = 3
         config.write_timeout = 5
       end
 
-      bc = Beaneater::Connection.new('localhost')
+      bc = Russet::Connection.new('localhost')
       rcv = bc.connection.getsockopt(Socket::SOL_SOCKET, Socket::SO_RCVTIMEO).unpack('l_l_')[0]
       snd = bc.connection.getsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO).unpack('l_l_')[0]
       assert_equal 3, rcv
@@ -99,7 +99,7 @@ describe Beaneater::Connection do
   describe 'for #transmit' do
     before do
       @host = 'localhost'
-      @bc = Beaneater::Connection.new(@host)
+      @bc = Russet::Connection.new(@host)
     end
 
     it "should return yaml loaded response" do
@@ -141,9 +141,9 @@ describe Beaneater::Connection do
 
     it "should fail after exceeding retries with DrainingError" do
       TCPSocket.any_instance.expects(:readline).times(3).
-        raises(Beaneater::UnexpectedResponse.from_status("DRAINING", "delete 56"))
+        raises(Russet::UnexpectedResponse.from_status("DRAINING", "delete 56"))
 
-      assert_raises(Beaneater::DrainingError) { @bc.transmit "delete 56\r\n" }
+      assert_raises(Russet::DrainingError) { @bc.transmit "delete 56\r\n" }
     end
 
     it "should fail after exceeding reconnect max retries" do
@@ -151,11 +151,11 @@ describe Beaneater::Connection do
       TCPSocket.stubs(:new).times(3).raises(Errno::ECONNREFUSED.new)
       TCPSocket.any_instance.stubs(:readline).times(1).raises(EOFError.new)
 
-      assert_raises(Beaneater::NotConnected) { @bc.transmit "delete 56\r\n" }
+      assert_raises(Russet::NotConnected) { @bc.transmit "delete 56\r\n" }
     end
 
     it "tubes_watched are restored after reconnect" do
-      client = Beaneater.new('127.0.0.1:11300')
+      client = Russet.new('127.0.0.1:11300')
       client.tubes.watch! "another"
 
       $called = false
@@ -179,7 +179,7 @@ describe Beaneater::Connection do
   describe 'for idempotent insert response' do
     before do
       @host = 'localhost'
-      @bc = Beaneater::Connection.new(@host)
+      @bc = Russet::Connection.new(@host)
       @idp_key = "testkey_#{Time.now.to_f}"
     end
 
@@ -199,19 +199,19 @@ describe Beaneater::Connection do
   describe 'for #close' do
     before do
       @host = 'localhost'
-      @bc = Beaneater::Connection.new(@host)
+      @bc = Russet::Connection.new(@host)
     end
 
     it "should clear connection" do
       assert_kind_of TCPSocket, @bc.connection
       @bc.close
       assert_nil @bc.connection
-      assert_raises(Beaneater::NotConnected) { @bc.transmit 'stats' }
+      assert_raises(Russet::NotConnected) { @bc.transmit 'stats' }
     end
   end # close
   describe 'for drain and undrain commands' do
     it "should return DRAINING status for drain command" do
-      @bc = Beaneater::Connection.new('localhost')
+      @bc = Russet::Connection.new('localhost')
       TCPSocket.any_instance.stubs(:write)
       TCPSocket.any_instance.expects(:readline).returns("DRAINING\r\n")
       res = @bc.transmit("drain")
@@ -219,7 +219,7 @@ describe Beaneater::Connection do
     end
 
     it "should return NOT_DRAINING status for undrain command" do
-      @bc = Beaneater::Connection.new('localhost')
+      @bc = Russet::Connection.new('localhost')
       TCPSocket.any_instance.stubs(:write)
       TCPSocket.any_instance.expects(:readline).returns("NOT_DRAINING\r\n")
       res = @bc.transmit("undrain")
@@ -227,10 +227,10 @@ describe Beaneater::Connection do
     end
 
     it "should still raise DrainingError for non-drain commands" do
-      @bc = Beaneater::Connection.new('localhost')
+      @bc = Russet::Connection.new('localhost')
       TCPSocket.any_instance.stubs(:write)
       TCPSocket.any_instance.expects(:readline).times(3).returns("DRAINING\r\n")
-      assert_raises(Beaneater::DrainingError) { @bc.transmit("put 0 0 100 4\r\ntest") }
+      assert_raises(Russet::DrainingError) { @bc.transmit("put 0 0 100 4\r\ntest") }
     end
   end # drain and undrain
-end # Beaneater::Connection
+end # Russet::Connection

@@ -4,11 +4,11 @@ require 'term/ansicolor'
 class String; include Term::ANSIColor; end
 def step(msg); "\n[STEP] #{msg}...".yellow; end
 $:.unshift("../lib")
-require 'beaneater'
+require 'russet'
 
 # Establish a pool of beanstalks
 puts step("Connecting to Beanstalk")
-bc = Beaneater.new('localhost')
+bc = Russet.new('localhost')
 puts bc
 
 # Print out key stats
@@ -53,13 +53,13 @@ puts step("Register jobs for tubes")
 bc.jobs.register('tube_test', :retry_on => [Timeout::Error]) do |job|
  p 'tube_test'
  p job
- raise Beaneater::AbortProcessingError
+ raise Russet::AbortProcessingError
 end
 
 bc.jobs.register('tube_test2', :retry_on => [Timeout::Error]) do |job|
  p 'tube_test2'
  p job
- raise Beaneater::AbortProcessingError
+ raise Russet::AbortProcessingError
 end
 
 p bc.jobs.processors

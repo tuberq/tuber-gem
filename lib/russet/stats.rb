@@ -1,21 +1,21 @@
 # frozen_string_literal: true
 
-require 'beaneater/stats/fast_struct'
-require 'beaneater/stats/stat_struct'
+require 'russet/stats/fast_struct'
+require 'russet/stats/stat_struct'
 
-class Beaneater
+class Russet
   # Represents stats related to the beanstalkd pool.
   class Stats
 
     # @!attribute client
-    #   @return [Beaneater] returns the client instance
+    #   @return [Russet] returns the client instance
     attr_reader :client
 
     # Creates new stats instance.
     #
-    # @param [Beaneater] client The beaneater client instance.
+    # @param [Russet] client The russet client instance.
     # @example
-    #  Beaneater::Stats.new(@client)
+    #  Russet::Stats.new(@client)
     #
     def initialize(client)
       @client = client
@@ -69,7 +69,7 @@ class Beaneater
 
     # Returns struct based on stats data from response.
     #
-    # @return [Beaneater::StatStruct] the stats
+    # @return [Russet::StatStruct] the stats
     # @example
     #  self.data # => { 'version' : 1.7, 'total_connections' : 23 }
     #  self.data.total_connections # => 23
@@ -78,4 +78,4 @@ class Beaneater
       StatStruct.from_hash(client.connection.transmit('stats')[:body])
     end
   end # Stats
-end # Beaneater
+end # Russet

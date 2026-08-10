@@ -3,23 +3,23 @@
 require 'thread' unless defined?(Mutex)
 
 %w(version configuration errors connection tube job stats).each do |f|
-  require "beaneater/#{f}"
+  require "russet/#{f}"
 end
 
-class Beaneater
+class Russet
 
   # @!attribute connection
-  #   @return <Beaneater::Connection> returns the associated connection object
+  #   @return <Russet::Connection> returns the associated connection object
   attr_reader :connection
 
-  # Initialize new instance of Beaneater
+  # Initialize new instance of Russet
   #
   # @param [String] address in the form "host:port"
   # @example
-  #   Beaneater.new('127.0.0.1:11300')
+  #   Russet.new('127.0.0.1:11300')
   #
   #   ENV['BEANSTALKD_URL'] = '127.0.0.1:11300'
-  #   @b = Beaneater.new
+  #   @b = Russet.new
   #   @b.connection.host # => '127.0.0.1'
   #   @b.connection.port # => '11300'
   #
@@ -27,25 +27,25 @@ class Beaneater
     @connection =  Connection.new(address)
   end
 
-  # Returns Beaneater::Tubes object for accessing tube related functions.
+  # Returns Russet::Tubes object for accessing tube related functions.
   #
-  # @return [Beaneater::Tubes] tubes object
+  # @return [Russet::Tubes] tubes object
   # @api public
   def tubes
-    @tubes ||= Beaneater::Tubes.new(self)
+    @tubes ||= Russet::Tubes.new(self)
   end
 
-  # Returns Beaneater::Jobs object for accessing job related functions.
+  # Returns Russet::Jobs object for accessing job related functions.
   #
-  # @return [Beaneater::Jobs] jobs object
+  # @return [Russet::Jobs] jobs object
   # @api public
   def jobs
-    @jobs ||= Beaneater::Jobs.new(self)
+    @jobs ||= Russet::Jobs.new(self)
   end
 
-  # Returns Beaneater::Stats object for accessing beanstalk stats.
+  # Returns Russet::Stats object for accessing beanstalk stats.
   #
-  # @return [Beaneater::Stats] stats object
+  # @return [Russet::Stats] stats object
   # @api public
   def stats
     @stats ||= Stats.new(self)
@@ -55,7 +55,7 @@ class Beaneater
   #
   # @return [Hash] Response from beanstalkd
   # @example
-  #  @beaneater_instance.drain
+  #  @russet_instance.drain
   #
   def drain
     connection.transmit("drain")
@@ -65,7 +65,7 @@ class Beaneater
   #
   # @return [Hash] Response from beanstalkd
   # @example
-  #  @beaneater_instance.undrain
+  #  @russet_instance.undrain
   #
   def undrain
     connection.transmit("undrain")
@@ -74,7 +74,7 @@ class Beaneater
   # Closes the related connection
   #
   # @example
-  #  @beaneater_instance.close
+  #  @russet_instance.close
   #
   def close
     connection.close if connection
@@ -86,7 +86,7 @@ class Beaneater
     # Yields a configuration block
     #
     # @example
-    #   Beaneater.configure do |config|
+    #   Russet.configure do |config|
     #     config.job_parser = lamda { |body| Yaml.load(body)}
     #   end
     #
@@ -98,10 +98,10 @@ class Beaneater
     # Returns the configuration options set for Backburner
     #
     # @example
-    #   Beaneater.configuration.default_put_ttr => 120
+    #   Russet.configuration.default_put_ttr => 120
     #
     def configuration
       @_configuration ||= Configuration.new
     end
   end
-end # Beaneater
+end # Russet

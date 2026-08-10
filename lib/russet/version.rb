@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class Beaneater
+class Russet
   # Current version of gem.
-  VERSION = "1.1.4"
+  VERSION = "1.0.0"
 end

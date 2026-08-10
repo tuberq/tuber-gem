@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
-class Beaneater
+class Russet
   # Represents a stats hash with proper underscored keys
   class StatStruct < FasterOpenStruct
     # Convert a stats hash into a struct.
     #
     # @param [Hash{String => String}] hash Hash Stats hash to convert to struct
-    # @return [Beaneater::StatStruct, nil] Stats struct from hash
+    # @return [Russet::StatStruct, nil] Stats struct from hash
     # @example
     #   s = StatStruct.from_hash(:foo => "bar")
     #   s.foo # => 'bar'
@@ -49,4 +49,4 @@ class Beaneater
       @hash
     end
   end # StatStruct
-end # Beaneater
+end # Russet

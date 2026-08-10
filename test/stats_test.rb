@@ -4,11 +4,11 @@
 
 require File.expand_path('../test_helper', __FILE__)
 
-describe Beaneater::Stats do
+describe Russet::Stats do
   before do
     connection = stub(:transmit => { :body => { 'uptime' => 1, 'cmd-use' => 2 }, :status => "OK"})
     @beanstalk = stub(:connection => connection)
-    @stats = Beaneater::Stats.new(@beanstalk)
+    @stats = Russet::Stats.new(@beanstalk)
   end
 
   describe 'for #[]' do
@@ -42,4 +42,4 @@ describe Beaneater::Stats do
       assert_raises(NoMethodError) { @stats.cmd }
     end
   end # method_missing
-end # Beaneater::Stats
+end # Russet::Stats

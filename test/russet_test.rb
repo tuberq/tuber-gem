@@ -4,7 +4,7 @@ require File.expand_path('../test_helper', __FILE__)
 
 describe "beanstalk-client" do
   before do
-    @beanstalk = Beaneater.new('127.0.0.1:11300')
+    @beanstalk = Russet.new('127.0.0.1:11300')
     @tubes = ['one', 'two', 'three']
 
     # Put something on each tube so they exist

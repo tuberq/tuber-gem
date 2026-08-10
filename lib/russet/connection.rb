@@ -3,7 +3,7 @@
 require 'yaml'
 require 'socket'
 
-class Beaneater
+class Russet
   # Represents a connection to a beanstalkd instance.
   class Connection
 
@@ -42,16 +42,16 @@ class Beaneater
     #
     # @param [String] address beanstalkd instance address.
     # @example
-    #   Beaneater::Connection.new('127.0.0.1')
-    #   Beaneater::Connection.new('127.0.0.1:11300')
+    #   Russet::Connection.new('127.0.0.1')
+    #   Russet::Connection.new('127.0.0.1:11300')
     #
     #   ENV['BEANSTALKD_URL'] = '127.0.0.1:11300'
-    #   @b = Beaneater.new
+    #   @b = Russet.new
     #   @b.connection.host # => '127.0.0.1'
     #   @b.connection.port # => '11300'
     #
     def initialize(address)
-      @address = address || _host_from_env || Beaneater.configuration.beanstalkd_url
+      @address = address || _host_from_env || Russet.configuration.beanstalkd_url
       @mutex = Mutex.new
       @tube_used = 'default'
       @tubes_watched = ['default']
@@ -67,7 +67,7 @@ class Beaneater
     # @param [String] command Beanstalkd command
     # @return [Array<Hash{String => String, Number}>] Beanstalkd command response
     # @example
-    #   @conn = Beaneater::Connection.new
+    #   @conn = Russet::Connection.new
     #   @conn.transmit('bury 123')
     #   @conn.transmit('stats')
     #
@@ -94,7 +94,7 @@ class Beaneater
     # @param [Integer] count Maximum number of jobs to reserve
     # @param [Integer] timeout Seconds to long-poll for the first job (nil = non-blocking)
     # @return [Array<Hash>] Array of job hashes with :status, :id, :body keys
-    # @raise [Beaneater::DeadlineSoonError] A reserved job's TTR is about to expire
+    # @raise [Russet::DeadlineSoonError] A reserved job's TTR is about to expire
     #
     def reserve_batch(count, timeout = nil)
       _with_retry do
@@ -168,7 +168,7 @@ class Beaneater
     #  @conn.inspect
     #
     def to_s
-      "#<Beaneater::Connection host=#{host.inspect} port=#{port.inspect}>"
+      "#<Russet::Connection host=#{host.inspect} port=#{port.inspect}>"
     end
     alias :inspect :to_s
 
@@ -186,7 +186,7 @@ class Beaneater
     # Establish a connection based on beanstalk address.
     #
     # @return [Net::TCPSocket] connection for specified address.
-    # @raise [Beaneater::NotConnected] Could not connect to specified beanstalkd instance.
+    # @raise [Russet::NotConnected] Could not connect to specified beanstalkd instance.
     # @example
     #  establish_connection('localhost:3005')
     #
@@ -219,7 +219,7 @@ class Beaneater
     # @param [String] cmd Beanstalk command transmitted
     # @param [String] res Telnet command response
     # @return [Array<Hash{String => String, Number}>] Beanstalk response with `status`, `id`, `body`
-    # @raise [Beaneater::UnexpectedResponse] Response from beanstalk command was an error status
+    # @raise [Russet::UnexpectedResponse] Response from beanstalk command was an error status
     # @example
     #  parse_response("delete 56", "DELETED 56\nFOO")
     #   # => { :body => "FOO", :status => "DELETED", :id => 56 }
@@ -256,11 +256,11 @@ class Beaneater
       response
     end
 
-    # Returns configuration options for beaneater
+    # Returns configuration options for russet
     #
-    # @return [Beaneater::Configuration] configuration object
+    # @return [Russet::Configuration] configuration object
     def config
-      Beaneater.configuration
+      Russet.configuration
     end
 
     private
@@ -291,7 +291,7 @@ class Beaneater
       _reconnect(ex, retry_interval)
       _initialize_tubes if init
       retry
-    rescue Beaneater::DrainingError
+    rescue Russet::DrainingError
       tries -= 1
       if tries.zero?
         close
@@ -338,10 +338,10 @@ class Beaneater
     end
 
     # Raises an error to be triggered when the connection has failed
-    # @raise [Beaneater::NotConnected] Beanstalkd is no longer connected
+    # @raise [Russet::NotConnected] Beanstalkd is no longer connected
     def _raise_not_connected!
-      raise Beaneater::NotConnected, "Connection to beanstalk '#{@host}:#{@port}' is closed!"
+      raise Russet::NotConnected, "Connection to beanstalk '#{@host}:#{@port}' is closed!"
     end
 
   end # Connection
-end # Beaneater
+end # Russet

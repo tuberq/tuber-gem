@@ -4,10 +4,10 @@
 
 require File.expand_path('../test_helper', __FILE__)
 
-describe Beaneater::StatStruct do
+describe Russet::StatStruct do
   before do
     @hash = { :foo => "bar", :bar => "baz", :baz => "foo", :"under-score" => "demo" }
-    @struct = Beaneater::StatStruct.from_hash(@hash)
+    @struct = Russet::StatStruct.from_hash(@hash)
   end
 
   describe "for #from_hash" do
@@ -55,4 +55,4 @@ describe Beaneater::StatStruct do
       assert_equal [['foo', 'bar'], ['bar', 'baz'], ['baz', 'foo'], ['under_score', 'demo']].sort, @struct.to_h.sort
     end
   end # to_h
-end # Beaneater::StatStruct
+end # Russet::StatStruct

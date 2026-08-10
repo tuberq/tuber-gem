@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class Beaneater
+class Russet
   #
   # Borrowed from:
   # https://github.com/dolzenko/faster_open_struct/blob/master/lib/faster_open_struct.rb
@@ -95,4 +95,4 @@ class Beaneater
     end
     alias :to_s :inspect
   end # FasterOpenStruct
-end # Beaneater
+end # Russet

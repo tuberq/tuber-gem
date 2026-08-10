@@ -1,8 +1,8 @@
 --output-dir doc/
 --readme README.md
---title Beaneater
+--title Russet
 --markup-provider=redcarpet
 --markup=markdown
 --protected
 --no-private
-lib/beaneater/**/*.rb
+lib/russet/**/*.rb

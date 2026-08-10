@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class Beaneater
+class Russet
   # Raises when a beanstalkd instance is no longer accessible.
   class NotConnected < RuntimeError; end
   # Raises when the tube name specified is invalid.
@@ -25,11 +25,11 @@ class Beaneater
 
     # Initialize unexpected response error
     #
-    # @param [Beaneater::UnexpectedResponse] status Unexpected response object
+    # @param [Russet::UnexpectedResponse] status Unexpected response object
     # @param [String] cmd Beanstalkd request command
     #
     # @example
-    #   Beaneater::UnexpectedResponse.new(NotFoundError, 'bury 123')
+    #   Russet::UnexpectedResponse.new(NotFoundError, 'bury 123')
     #
     def initialize(status, cmd)
       @status, @cmd = status, cmd
@@ -41,14 +41,14 @@ class Beaneater
     # @param [String] status Beanstalkd error status
     # @param [String] cmd Beanstalkd request command
     #
-    # @return [Beaneater::UnexpectedResponse] Exception for the status provided
+    # @return [Russet::UnexpectedResponse] Exception for the status provided
     # @example
-    #   Beaneater::UnexpectedResponse.new('NOT_FOUND', 'bury 123')
+    #   Russet::UnexpectedResponse.new('NOT_FOUND', 'bury 123')
     #
     def self.from_status(status, cmd)
       error_klazz_name = status.split('_').map { |w| w.capitalize }.join
       error_klazz_name << "Error" unless error_klazz_name =~ /Error$/
-      error_klazz = Beaneater.const_get(error_klazz_name)
+      error_klazz = Russet.const_get(error_klazz_name)
       error_klazz.new(status, cmd)
     end
   end

@@ -1,13 +1,13 @@
-# Beaneater
+# Russet
 
-![Build Status](https://github.com/beanstalkd/beaneater/actions/workflows/ruby.yml/badge.svg)
+A Ruby client for [Tuber](https://github.com/dkam/tuber) and [beanstalkd](https://github.com/beanstalkd/beanstalkd), the simple and fast job queues. Tuber is a Rust rewrite of beanstalkd with extensions including weighted tubes, idempotent/unique jobs, concurrency controls and job dependencies.
 
-A Ruby client for [beanstalkd](https://github.com/beanstalkd/beanstalkd) and [Tuber](https://github.com/dkam/tuber), the simple and fast job queues. Tuber is a Rust rewrite of beanstalkd with extensions including weighted tubes, idempotent/unique jobs, concurrency controls and job dependencies.
+Russet is a fork of [beaneater](https://github.com/beanstalkd/beaneater) that adds support for Tuber's protocol extensions. It stays fully compatible with stock beanstalkd — if you only talk to beanstalkd, Russet behaves as beaneater does.
 
 ## Quick Start
 
 ```ruby
-@beanstalk = Beaneater.new('localhost:11300')
+@beanstalk = Russet.new('localhost:11300')
 
 @tube = @beanstalk.tubes["my-tube"]
 @tube.put '{"key": "foo"}', pri: 5
@@ -28,17 +28,39 @@ Install beanstalkd or tuber, then add the gem:
 
 ```ruby
 # Gemfile
-gem 'beaneater'
+gem 'russet'
 ```
+
+## Migrating from beaneater
+
+Russet forked from beaneater 1.1.4. The rename is the only breaking change — every
+method, option and return value is unchanged. Two things to update:
+
+```ruby
+require 'beaneater'                        # before
+require 'russet'                           # after
+
+@beanstalk = Beaneater.new('localhost:11300')  # before
+@beanstalk = Russet.new('localhost:11300')     # after
+```
+
+That includes the nested constants (`Beaneater::Job` → `Russet::Job`), the error
+classes (`Beaneater::NotConnected` → `Russet::NotConnected`) and the configuration
+block (`Beaneater.configure` → `Russet.configure`). In most codebases a
+case-sensitive `Beaneater` → `Russet` and `beaneater` → `russet` replacement is the
+whole migration.
+
+The `BEANSTALKD_URL` environment variable keeps its name — it's a beanstalkd
+convention, not a beaneater one.
 
 ## Usage
 
 ### Configuration
 
-To setup advanced options for beaneater, you can pass configuration options using:
+To setup advanced options for russet, you can pass configuration options using:
 
 ```ruby
-Beaneater.configure do |config|
+Russet.configure do |config|
   # config.default_put_delay   = 0
   # config.default_put_pri     = 65536
   # config.default_put_ttr     = 120
@@ -59,10 +81,10 @@ The above options are all defaults, so only include a configuration block if you
 ### Connection
 
 ```ruby
-@beanstalk = Beaneater.new('10.0.1.5:11300')
+@beanstalk = Russet.new('10.0.1.5:11300')
 
 # Or use ENV['BEANSTALKD_URL']
-@beanstalk = Beaneater.new
+@beanstalk = Russet.new
 
 @beanstalk.close
 ```
@@ -199,10 +221,10 @@ Prevent duplicate jobs with the `idempotency:` option. If a job with the same ke
 
 ```ruby
 @tube.put "send-report", idempotency: "daily-report"
-# => <Beaneater::Job id=1 body="send-report">
+# => <Russet::Job id=1 body="send-report">
 
 @tube.put "send-report", idempotency: "daily-report"
-# => <Beaneater::Job id=1 body="send-report">  (same job, no duplicate created)
+# => <Russet::Job id=1 body="send-report">  (same job, no duplicate created)
 ```
 
 The key is scoped to the tube and cleared when the job is deleted, so the same key can be reused afterwards.
@@ -271,7 +293,7 @@ jobs = @beanstalk.tubes.reserve_batch(10, 30)  # block up to 30s for the first j
 ```
 
 While blocked, a positive-timeout batch reserve may raise
-`Beaneater::DeadlineSoonError` if one of the connection's already-reserved jobs
+`Russet::DeadlineSoonError` if one of the connection's already-reserved jobs
 is about to hit its TTR — service that job, then reserve again.
 
 ### Batch Touch (Tuber 0.12.0+)
@@ -312,7 +334,7 @@ lost a job.
 ## Configuration
 
 ```ruby
-Beaneater.configure do |config|
+Russet.configure do |config|
   config.default_put_delay   = 0
   config.default_put_pri     = 65536
   config.default_put_ttr     = 120
@@ -325,7 +347,7 @@ end
 The `job_serializer` is applied to every `put` body — useful for automatic JSON encoding:
 
 ```ruby
-Beaneater.configure do |config|
+Russet.configure do |config|
   config.job_serializer = lambda { |body| JSON.dump(body) }
 end
 ```
@@ -334,11 +356,11 @@ end
 
 | Error                         | Description |
 | ----------------------------- | ----------- |
-| Beaneater::NotConnected       | Cannot connect to beanstalkd. |
-| Beaneater::InvalidTubeName    | Tube name is not valid. |
-| Beaneater::NotFoundError      | Job or tube not found. |
-| Beaneater::TimedOutError      | Reserve timed out. |
-| Beaneater::JobNotReserved     | Action requires a reserved job. |
+| Russet::NotConnected       | Cannot connect to beanstalkd. |
+| Russet::InvalidTubeName    | Tube name is not valid. |
+| Russet::NotFoundError      | Job or tube not found. |
+| Russet::TimedOutError      | Reserve timed out. |
+| Russet::JobNotReserved     | Action requires a reserved job. |
 
 See the [beanstalk protocol](https://github.com/beanstalkd/beanstalkd/blob/master/doc/protocol.txt) for additional error types.
 
@@ -347,12 +369,15 @@ See the [beanstalk protocol](https://github.com/beanstalkd/beanstalkd/blob/maste
  * [Beanstalkd](https://github.com/beanstalkd/beanstalkd)
  * [Tuber](https://github.com/dkam/tuber)
  * [Beanstalk protocol](https://github.com/beanstalkd/beanstalkd/blob/master/doc/protocol.txt)
- * [Beaneater on RubyGems](https://rubygems.org/gems/beaneater)
+ * [Russet on RubyGems](https://rubygems.org/gems/russet)
  * [Backburner](https://github.com/nesquena/backburner) — Ruby job queue for Rails/Sinatra
 
 ## Contributors
 
- - [Nico Taing](https://github.com/Nico-Taing) - Creator and co-maintainer
+Russet is maintained by [Dan Milne](https://github.com/dkam), and builds on the work of
+everyone who wrote beaneater, from which it is forked:
+
+ - [Nico Taing](https://github.com/Nico-Taing) - Creator and co-maintainer of beaneater
  - [Nathan Esquenazi](https://github.com/nesquena) - Contributor and co-maintainer
  - [Keith Rarick](https://github.com/kr) - Much code inspired and adapted from beanstalk-client
  - [Vidar Hokstad](https://github.com/vidarh) - Replaced telnet with correct TCP socket handling

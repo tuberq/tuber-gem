@@ -1,20 +1,20 @@
 # frozen_string_literal: true
 
-class Beaneater
+class Russet
   # Represents collection of tube related commands.
 
   class Tubes
     include Enumerable
 
     # @!attribute client
-    #   @return [Beaneater] returns the client instance
+    #   @return [Russet] returns the client instance
     attr_reader :client
 
     # Creates new tubes instance.
     #
-    # @param [Beaneater] client The beaneater client instance.
+    # @param [Russet] client The russet client instance.
     # @example
-    #  Beaneater::Tubes.new(@client)
+    #  Russet::Tubes.new(@client)
     #
     def initialize(client)
       @client = client
@@ -30,7 +30,7 @@ class Beaneater
 
     # Delegates transmit to the connection object.
     #
-    # @see Beaneater::Connection#transmit
+    # @see Russet::Connection#transmit
     def transmit(command, **options)
       client.connection.transmit(command, **options)
     end
@@ -38,11 +38,11 @@ class Beaneater
     # Finds the specified beanstalk tube.
     #
     # @param [String] tube_name Name of the beanstalkd tube
-    # @return [Beaneater::Tube] specified tube
+    # @return [Russet::Tube] specified tube
     # @example
     #   @pool.tubes.find('tube2')
     #   @pool.tubes['tube2']
-    #     # => <Beaneater::Tube name="tube2">
+    #     # => <Russet::Tube name="tube2">
     #
     # @api public
     def find(tube_name)
@@ -54,11 +54,11 @@ class Beaneater
     #
     # @param [Integer] timeout Number of seconds before timing out.
     # @param [Proc] block Callback to perform on the reserved job.
-    # @yield [job] Reserved beaneater job.
-    # @return [Beaneater::Job] Reserved beaneater job.
+    # @yield [job] Reserved russet job.
+    # @return [Russet::Job] Reserved russet job.
     # @example
     #   @client.tubes.reserve { |job| process(job) }
-    #     # => <Beaneater::Job id=5 body="foo">
+    #     # => <Russet::Job id=5 body="foo">
     #
     # @api public
     def reserve(timeout=nil, &block)
@@ -77,12 +77,12 @@ class Beaneater
     #
     # @param [Integer] count Maximum number of jobs to reserve
     # @param [Integer] timeout Seconds to long-poll for the first job (nil = non-blocking)
-    # @return [Array<Beaneater::Job>] Array of reserved jobs (empty if none available)
-    # @raise [Beaneater::DeadlineSoonError] A reserved job's TTR is about to expire
+    # @return [Array<Russet::Job>] Array of reserved jobs (empty if none available)
+    # @raise [Russet::DeadlineSoonError] A reserved job's TTR is about to expire
     # @example
     #   @client.tubes.reserve_batch(10)       # non-blocking
     #   @client.tubes.reserve_batch(10, 30)   # long-poll up to 30s
-    #     # => [<Beaneater::Job id=1 body="foo">, ...]
+    #     # => [<Russet::Job id=1 body="foo">, ...]
     #
     # @api public
     def reserve_batch(count, timeout = nil)
@@ -106,26 +106,26 @@ class Beaneater
     # Reserves a specific job by its ID.
     #
     # @param [Integer, String] id The job ID to reserve
-    # @return [Beaneater::Job, nil] The reserved job, or nil if not found
+    # @return [Russet::Job, nil] The reserved job, or nil if not found
     # @example
     #   @client.tubes.reserve_job(123)
-    #     # => <Beaneater::Job id=123 body="foo">
+    #     # => <Russet::Job id=123 body="foo">
     #
     # @api public
     def reserve_job(id)
       res = transmit("reserve-job #{id}")
       Job.new(client, res)
-    rescue Beaneater::NotFoundError
+    rescue Russet::NotFoundError
       nil
     end
 
     # Returns stats for a job group.
     #
     # @param [String] group The group name
-    # @return [Beaneater::StatStruct] Struct of group stats
+    # @return [Russet::StatStruct] Struct of group stats
     # @example
     #   @client.tubes.stats_group('batch-1')
-    #     # => #<StatStruct name="batch-1" pending=5 ...>
+    #     # => #<StatStruct name="batch-1" ready=5 reserved=0 delayed=0 buried=0 waiting_jobs=0>
     #
     # @api public
     def stats_group(group)
@@ -135,10 +135,10 @@ class Beaneater
 
     # List of all known beanstalk tubes.
     #
-    # @return [Array<Beaneater::Tube>] List of all beanstalk tubes.
+    # @return [Array<Russet::Tube>] List of all beanstalk tubes.
     # @example
     #   @client.tubes.all
-    #     # => [<Beaneater::Tube name="tube2">, <Beaneater::Tube name="tube3">]
+    #     # => [<Russet::Tube name="tube2">, <Russet::Tube name="tube3">]
     #
     # @api public
     def all
@@ -160,10 +160,10 @@ class Beaneater
 
     # List of watched beanstalk tubes.
     #
-    # @return [Array<Beaneater::Tube>] List of watched beanstalk tubes.
+    # @return [Array<Russet::Tube>] List of watched beanstalk tubes.
     # @example
     #   @client.tubes.watched
-    #     # => [<Beaneater::Tube name="tube2">, <Beaneater::Tube name="tube3">]
+    #     # => [<Russet::Tube name="tube2">, <Russet::Tube name="tube3">]
     #
     # @api public
     def watched
@@ -176,10 +176,10 @@ class Beaneater
 
     # Currently used beanstalk tube.
     #
-    # @return [Beaneater::Tube] Currently used beanstalk tube.
+    # @return [Russet::Tube] Currently used beanstalk tube.
     # @example
     #   @client.tubes.used
-    #     # => <Beaneater::Tube name="tube2">
+    #     # => <Russet::Tube name="tube2">
     #
     # @api public
     def used
@@ -190,7 +190,7 @@ class Beaneater
     # Add specified beanstalkd tubes as watched.
     #
     # @param [*String] names Name of tubes to watch
-    # @raise [Beaneater::InvalidTubeName] Tube to watch was invalid.
+    # @raise [Russet::InvalidTubeName] Tube to watch was invalid.
     # @example
     #   @client.tubes.watch('foo', 'bar')
     #
@@ -208,7 +208,7 @@ class Beaneater
     # Add specified beanstalkd tubes as watched and ignores all other tubes.
     #
     # @param [*String] names Name of tubes to watch
-    # @raise [Beaneater::InvalidTubeName] Tube to watch was invalid.
+    # @raise [Russet::InvalidTubeName] Tube to watch was invalid.
     # @example
     #   @client.tubes.watch!('foo', 'bar')
     #
@@ -247,4 +247,4 @@ class Beaneater
       raise InvalidTubeName, "Tube cannot be named '#{tube}'"
     end
   end # Tubes
-end # Beaneater
+end # Russet
