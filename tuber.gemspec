@@ -9,8 +9,8 @@ Gem::Specification.new do |gem|
   gem.version       = Tuber::VERSION
   gem.authors       = ["Dan Milne", "Nico Taing"]
   gem.email         = ["d@nmilne.com"]
-  gem.description   = %q{Ruby client for Tuber and beanstalkd job queues. A fork of beaneater with support for Tuber's protocol extensions.}
-  gem.summary       = %q{Ruby client for Tuber and beanstalkd.}
+  gem.description   = %q{The Ruby client for the Tuber job queue server: unique jobs, concurrency keys, job group pipelines, batch operations and weighted tubes. Also fully compatible with beanstalkd.}
+  gem.summary       = %q{Ruby client for the Tuber job queue server.}
   gem.homepage      = "https://github.com/tuberq/tuber-gem"
   gem.license       = 'MIT'
 

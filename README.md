@@ -1,15 +1,15 @@
 # Tuber
 
-The Ruby client for [Tuber](https://github.com/tuberq/tuber) and [beanstalkd](https://github.com/beanstalkd/beanstalkd), the simple and fast job queues. Tuber is a Rust rewrite of beanstalkd with extensions including weighted tubes, idempotent/unique jobs, concurrency controls and job dependencies.
+The Ruby client for [Tuber](https://github.com/tuberq/tuber), the simple, fast job queue server. One binary, zero dependencies — with unique/idempotent jobs, concurrency keys, job group pipelines, weighted tubes and batch operations built in.
 
-This gem is a fork of [beaneater](https://github.com/beanstalkd/beaneater) that adds support for Tuber's protocol extensions. It stays fully compatible with stock beanstalkd — if you only talk to beanstalkd, it behaves as beaneater does.
+Tuber (the server and this gem) is wire-compatible with [beanstalkd](https://github.com/beanstalkd/beanstalkd): point this client at a stock beanstalkd and everything except the Tuber-only extensions works unchanged. The gem is a fork of [beaneater](https://github.com/beanstalkd/beaneater), so it is also a drop-in beaneater replacement — see [Migrating from beaneater](#migrating-from-beaneater).
 
 ## Quick Start
 
 ```ruby
-@beanstalk = Tuber.new('localhost:11300')
+@tuber = Tuber.new('localhost:11300')
 
-@tube = @beanstalk.tubes["my-tube"]
+@tube = @tuber.tubes["my-tube"]
 @tube.put '{"key": "foo"}', pri: 5
 @tube.put '{"key": "bar"}', delay: 3
 
@@ -19,12 +19,12 @@ while @tube.peek(:ready)
   job.delete
 end
 
-@beanstalk.close
+@tuber.close
 ```
 
 ## Installation
 
-Install beanstalkd or tuber, then add the gem:
+Install the [tuber server](https://github.com/tuberq/tuber) (a single binary; `brew install tuberq/tuber/tuber`, Docker image `ghcr.io/tuberq/tuber`, or a [release binary](https://github.com/tuberq/tuber/releases)) — or use an existing beanstalkd — then add the gem:
 
 ```ruby
 # Gemfile
@@ -41,7 +41,7 @@ require 'beaneater'                        # before
 require 'tuber'                           # after
 
 @beanstalk = Beaneater.new('localhost:11300')  # before
-@beanstalk = Tuber.new('localhost:11300')     # after
+@beanstalk = Tuber.new('localhost:11300')      # after
 ```
 
 That includes the nested constants (`Beaneater::Job` → `Tuber::Job`), the error
@@ -50,8 +50,9 @@ block (`Beaneater.configure` → `Tuber.configure`). In most codebases a
 case-sensitive `Beaneater` → `Tuber` and `beaneater` → `tuber` replacement is the
 whole migration.
 
-The `BEANSTALKD_URL` environment variable keeps its name — it's a beanstalkd
-convention, not a beaneater one.
+The `BEANSTALKD_URL` environment variable is still honoured (it's a beanstalkd
+convention, not a beaneater one), though `TUBER_URL` now takes precedence.
+Likewise `config.beanstalkd_url` remains as an alias for `config.tuber_url`.
 
 ## Usage
 
@@ -66,7 +67,7 @@ Tuber.configure do |config|
   # config.default_put_ttr     = 120
   # config.job_parser          = lambda { |body| body }
   # config.job_serializer      = lambda { |body| body }
-  # config.beanstalkd_url      = 'localhost:11300'
+  # config.tuber_url           = 'localhost:11300'
   # config.connect_timeout     = nil
   # config.resolv_timeout      = nil
   # config.read_timeout        = nil
@@ -81,30 +82,30 @@ The above options are all defaults, so only include a configuration block if you
 ### Connection
 
 ```ruby
-@beanstalk = Tuber.new('10.0.1.5:11300')
+@tuber = Tuber.new('10.0.1.5:11300')
 
-# Or use ENV['BEANSTALKD_URL']
-@beanstalk = Tuber.new
+# Or use ENV['TUBER_URL'] (or ENV['BEANSTALKD_URL'])
+@tuber = Tuber.new
 
-@beanstalk.close
+@tuber.close
 ```
 
 ### Tubes
 
-Tubes are beanstalk's work queues. Jobs are `put` into the used tube and `reserve`d from watched tubes. Each tube has a _ready_, _delayed_, and _buried_ queue.
+Tubes are named work queues. Jobs are `put` into the used tube and `reserve`d from watched tubes. Each tube has a _ready_, _delayed_, and _buried_ queue.
 
 ```ruby
-@tube = @beanstalk.tubes.find("some-tube")
+@tube = @tuber.tubes.find("some-tube")
 
 # Watch tubes for reserving jobs
-@beanstalk.tubes.watch!('some-tube')        # watch only these tubes
-@beanstalk.tubes.watch('another-tube')       # append to watch list
-@beanstalk.tubes.ignore('some-tube')         # stop watching
+@tuber.tubes.watch!('some-tube')        # watch only these tubes
+@tuber.tubes.watch('another-tube')       # append to watch list
+@tuber.tubes.ignore('some-tube')         # stop watching
 
 # List tubes
-@beanstalk.tubes.all       # => [<Tube name='foo'>, <Tube name='bar'>]
-@beanstalk.tubes.used      # => <Tube name='bar'>
-@beanstalk.tubes.watched   # => [<Tube name='foo'>]
+@tuber.tubes.all       # => [<Tube name='foo'>, <Tube name='bar'>]
+@tuber.tubes.used      # => <Tube name='bar'>
+@tuber.tubes.watched   # => [<Tube name='foo'>]
 
 # Manage tubes
 @tube.pause(3)        # pause for 3 seconds
@@ -147,8 +148,8 @@ Jobs are in one of three states:
 #### Reserving and processing jobs
 
 ```ruby
-job = @beanstalk.tubes.reserve      # blocks until a job is available
-job = @beanstalk.tubes.reserve(5)   # wait up to 5 seconds
+job = @tuber.tubes.reserve      # blocks until a job is available
+job = @tuber.tubes.reserve(5)   # wait up to 5 seconds
 
 puts job.body
 puts job.tube
@@ -163,12 +164,12 @@ job.bury     # set aside for inspection
 #### Peeking and kicking
 
 ```ruby
-@beanstalk.jobs.find(123)       # peek at a specific job
+@tuber.jobs.find(123)       # peek at a specific job
 @tube.peek(:ready)              # peek at next ready job
 @tube.peek(:buried)
 @tube.peek(:delayed)
 
-@beanstalk.tubes['some-tube'].kick(3)  # kick 3 buried jobs back to ready
+@tuber.tubes['some-tube'].kick(3)  # kick 3 buried jobs back to ready
 ```
 
 #### Automatic processing
@@ -176,15 +177,15 @@ job.bury     # set aside for inspection
 Register handlers for tubes and let `process!` loop over incoming jobs:
 
 ```ruby
-@beanstalk.jobs.register('some-tube', retry_on: [SomeError]) do |job|
+@tuber.jobs.register('some-tube', retry_on: [SomeError]) do |job|
   do_something(job)
 end
 
-@beanstalk.jobs.register('other-tube') do |job|
+@tuber.jobs.register('other-tube') do |job|
   do_something_else(job)
 end
 
-@beanstalk.jobs.process!
+@tuber.jobs.process!
 ```
 
 The loop reserves a job, calls the matching handler, then: deletes on success, releases on `retry_on` errors, and buries on other exceptions. Raise `AbortProcessingError` to stop the loop.
@@ -258,13 +259,13 @@ The second job won't be reserved until the first is deleted, released, or buried
 By default, `reserve` picks the highest-priority job across all watched tubes. Switch to weighted mode to select tubes randomly in proportion to their weight:
 
 ```ruby
-@beanstalk.tubes.watch('email')
-@beanstalk.tubes.watch('notifications', weight: 2)
-@beanstalk.tubes.watch('batch-jobs', weight: 6)
+@tuber.tubes.watch('email')
+@tuber.tubes.watch('notifications', weight: 2)
+@tuber.tubes.watch('batch-jobs', weight: 6)
 
-@beanstalk.tubes.reserve_mode(:weighted)
+@tuber.tubes.reserve_mode(:weighted)
 
-job = @beanstalk.tubes.reserve  # batch-jobs selected 6x as often as email
+job = @tuber.tubes.reserve  # batch-jobs selected 6x as often as email
 ```
 
 Tubes default to weight 1. Switch back with `reserve_mode(:fifo)`.
@@ -274,7 +275,7 @@ Tubes default to weight 1. Switch back with `reserve_mode(:fifo)`.
 Reserve multiple jobs atomically in a single call:
 
 ```ruby
-jobs = @beanstalk.tubes.reserve_batch(10)  # up to 10 jobs
+jobs = @tuber.tubes.reserve_batch(10)  # up to 10 jobs
 
 jobs.each do |job|
   process(job)
@@ -289,7 +290,7 @@ ready up to `count`, or returns an empty array when the timeout elapses. This
 avoids hot-looping a worker on empty polls.
 
 ```ruby
-jobs = @beanstalk.tubes.reserve_batch(10, 30)  # block up to 30s for the first job
+jobs = @tuber.tubes.reserve_batch(10, 30)  # block up to 30s for the first job
 ```
 
 While blocked, a positive-timeout batch reserve may raise
@@ -304,12 +305,12 @@ return to the queue while the worker is still busy. `touch_all` extends the TTR
 of every job the connection currently holds in a single command:
 
 ```ruby
-jobs = @beanstalk.tubes.reserve_batch(10)
+jobs = @tuber.tubes.reserve_batch(10)
 
 jobs.each do |job|
   process(job)
   job.delete
-  @beanstalk.jobs.touch_all   # heartbeat whatever is still held
+  @tuber.jobs.touch_all   # heartbeat whatever is still held
 end
 ```
 
@@ -326,9 +327,9 @@ lost a job.
 ### Stats
 
 ```ruby
-@beanstalk.stats                            # server-wide stats
-@beanstalk.tubes['some-tube'].stats         # tube stats
-@beanstalk.jobs[some_job_id].stats          # job stats
+@tuber.stats                            # server-wide stats
+@tuber.tubes['some-tube'].stats         # tube stats
+@tuber.jobs[some_job_id].stats          # job stats
 ```
 
 ## Configuration
@@ -340,7 +341,7 @@ Tuber.configure do |config|
   config.default_put_ttr     = 120
   config.job_parser          = lambda { |body| body }
   config.job_serializer      = lambda { |body| body }
-  config.beanstalkd_url      = 'localhost:11300'
+  config.tuber_url           = 'localhost:11300'
 end
 ```
 
@@ -356,20 +357,20 @@ end
 
 | Error                         | Description |
 | ----------------------------- | ----------- |
-| Tuber::NotConnected       | Cannot connect to beanstalkd. |
+| Tuber::NotConnected       | Cannot connect to the server. |
 | Tuber::InvalidTubeName    | Tube name is not valid. |
 | Tuber::NotFoundError      | Job or tube not found. |
 | Tuber::TimedOutError      | Reserve timed out. |
 | Tuber::JobNotReserved     | Action requires a reserved job. |
 
-See the [beanstalk protocol](https://github.com/beanstalkd/beanstalkd/blob/master/doc/protocol.txt) for additional error types.
+See the [Tuber protocol](https://github.com/tuberq/tuber/blob/main/docs/protocol.md) (a superset of the [beanstalk protocol](https://github.com/beanstalkd/beanstalkd/blob/master/doc/protocol.txt)) for additional error types.
 
 ## Resources
 
- * [Beanstalkd](https://github.com/beanstalkd/beanstalkd)
  * [Tuber](https://github.com/tuberq/tuber)
- * [Beanstalk protocol](https://github.com/beanstalkd/beanstalkd/blob/master/doc/protocol.txt)
+ * [Tuber protocol](https://github.com/tuberq/tuber/blob/main/docs/protocol.md)
  * [Tuber on RubyGems](https://rubygems.org/gems/tuber)
+ * [Beanstalkd](https://github.com/beanstalkd/beanstalkd) and the [beanstalk protocol](https://github.com/beanstalkd/beanstalkd/blob/master/doc/protocol.txt)
  * [Backburner](https://github.com/nesquena/backburner) — Ruby job queue for Rails/Sinatra
 
 ## Contributors
