@@ -4,6 +4,11 @@ The tuber gem is a fork of [beaneater](https://github.com/beanstalkd/beaneater),
 beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for reference.
 (0.0.1 was an empty placeholder published to claim the gem name.)
 
+## 0.5.1 (August 13 2026)
+
+* Fix empty keyword arguments forwarded through `Tube#transmit`, `Tubes#transmit` and `Jobs#transmit` arriving as an extra positional `{}` on Ruby 2.7
+* CI: start the Tuber container with an explicit `server` subcommand, add Ruby 4.0 to the test matrix
+
 ## 0.5.0 (August 13 2026)
 
 First functional release under the `tuber` name. Versioning restarts below 1.0
