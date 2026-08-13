@@ -18,7 +18,7 @@ class Tuber
   # @example
   #   Tuber.new('127.0.0.1:11300')
   #
-  #   ENV['BEANSTALKD_URL'] = '127.0.0.1:11300'
+  #   ENV['TUBER_URL'] = '127.0.0.1:11300'
   #   @b = Tuber.new
   #   @b.connection.host # => '127.0.0.1'
   #   @b.connection.port # => '11300'

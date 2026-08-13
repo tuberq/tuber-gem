@@ -56,13 +56,13 @@ class Tuber
     #   Tuber::Connection.new('127.0.0.1')
     #   Tuber::Connection.new('127.0.0.1:11300')
     #
-    #   ENV['BEANSTALKD_URL'] = '127.0.0.1:11300'
+    #   ENV['TUBER_URL'] = '127.0.0.1:11300'
     #   @b = Tuber.new
     #   @b.connection.host # => '127.0.0.1'
     #   @b.connection.port # => '11300'
     #
     def initialize(address)
-      @address = address || _host_from_env || Tuber.configuration.beanstalkd_url
+      @address = address || _host_from_env || Tuber.configuration.tuber_url
       @mutex = Mutex.new
       @tube_used = 'default'
       @tubes_watched = ['default']
@@ -335,15 +335,17 @@ class Tuber
       retry
     end
 
-    # The host provided by BEANSTALKD_URL environment variable, if available.
+    # The host provided by the TUBER_URL environment variable (or BEANSTALKD_URL,
+    # honoured for compatibility with beanstalkd tooling), if available.
     #
-    # @return [String] A beanstalkd host address
+    # @return [String] A server host address
     # @example
-    #  ENV['BEANSTALKD_URL'] = "localhost:1212"
+    #  ENV['TUBER_URL'] = "localhost:1212"
     #   # => 'localhost:1212'
     #
     def _host_from_env
-      ENV['BEANSTALKD_URL'].respond_to?(:length) && ENV['BEANSTALKD_URL'].length > 0 && ENV['BEANSTALKD_URL'].strip
+      url = ENV['TUBER_URL'] || ENV['BEANSTALKD_URL']
+      url.respond_to?(:length) && url.length > 0 && url.strip
     end
 
     # Packs a timeout value (in seconds) into a struct timeval binary string.
