@@ -6,7 +6,7 @@ require File.expand_path('../test_helper', __FILE__)
 
 describe Tuber::Jobs do
   before do
-    @beanstalk = Tuber.new('localhost')
+    @beanstalk = Tuber.new(tuber_address)
     @jobs = Tuber::Jobs.new(@beanstalk)
     @tube = @beanstalk.tubes.find('baz')
   end
@@ -41,6 +41,7 @@ describe Tuber::Jobs do
 
   describe "for #touch_all" do
     before do
+      require_tuber!
       @touch_tube = @beanstalk.tubes.find('touch_all_tube')
       @beanstalk.tubes.watch! 'touch_all_tube'
     end

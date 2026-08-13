@@ -17,6 +17,32 @@ require 'json'
 
 class MiniTest::Unit::TestCase
 
+  # Address of the server the integration-style tests talk to. Override with
+  # TUBER_TEST_ADDRESS when localhost:11300 isn't the server you mean
+  # (e.g. TUBER_TEST_ADDRESS=127.0.0.1 when another queue holds the IPv6 port).
+  def tuber_address
+    ENV.fetch('TUBER_TEST_ADDRESS', 'localhost')
+  end
+
+  # True when the server under test is Tuber rather than stock beanstalkd.
+  def tuber_server?
+    if $tuber_server.nil?
+      client = Tuber.new(tuber_address)
+      begin
+        $tuber_server = client.connection.transmit('stats')[:body]['version'].to_s.include?('tuber')
+      ensure
+        client.close
+      end
+    end
+    $tuber_server
+  end
+
+  # Skips the current test unless the server speaks Tuber's extended protocol
+  # (reserve-batch, touch-all, flush-buried, ...).
+  def require_tuber!
+    skip "requires a Tuber server, not stock beanstalkd" unless tuber_server?
+  end
+
   # Cleans up all jobs from specific tubes
   #
   # @example

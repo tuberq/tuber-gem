@@ -6,7 +6,7 @@ require File.expand_path('../test_helper', __FILE__)
 
 describe Tuber::Job do
   before do
-    @beanstalk  = Tuber.new('localhost')
+    @beanstalk  = Tuber.new(tuber_address)
     @tube  = @beanstalk.tubes.find 'tube'
   end
 

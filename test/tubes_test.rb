@@ -18,7 +18,7 @@ describe Tuber::Tubes do
 
   describe "for #use" do
     before do
-      @beanstalk = Tuber.new('localhost')
+      @beanstalk = Tuber.new(tuber_address)
     end
 
     it "should switch to used tube for valid name" do
@@ -34,7 +34,7 @@ describe Tuber::Tubes do
 
   describe "for #watch & #watched" do
     before do
-      @beanstalk = Tuber.new('localhost')
+      @beanstalk = Tuber.new(tuber_address)
     end
 
     it 'should watch specified tubes' do
@@ -50,7 +50,7 @@ describe Tuber::Tubes do
 
   describe "for #all" do
     before do
-      @beanstalk = Tuber.new('localhost')
+      @beanstalk = Tuber.new(tuber_address)
       @beanstalk.tubes.find('foo').put 'bar'
       @beanstalk.tubes.find('bar').put 'foo'
     end
@@ -64,7 +64,7 @@ describe Tuber::Tubes do
 
   describe "for Enumerable" do
     before do
-      @beanstalk = Tuber.new('localhost')
+      @beanstalk = Tuber.new(tuber_address)
       @beanstalk.tubes.find('foo').put 'bar'
       @beanstalk.tubes.find('bar').put 'foo'
     end
@@ -78,7 +78,7 @@ describe Tuber::Tubes do
 
   describe "for #used" do
     before do
-      @beanstalk = Tuber.new('localhost')
+      @beanstalk = Tuber.new(tuber_address)
       @beanstalk.tubes.find('foo').put 'bar'
       @beanstalk.tubes.find('bar').put 'foo'
     end
@@ -95,7 +95,7 @@ describe Tuber::Tubes do
 
   describe "for #watch!" do
     before do
-      @beanstalk = Tuber.new('localhost')
+      @beanstalk = Tuber.new(tuber_address)
     end
 
     it 'should watch specified tubes' do
@@ -107,7 +107,7 @@ describe Tuber::Tubes do
 
   describe "for #ignore" do
     before do
-      @beanstalk = Tuber.new('localhost')
+      @beanstalk = Tuber.new(tuber_address)
     end
 
     it 'should ignore specified tubes' do
@@ -160,7 +160,7 @@ describe Tuber::Tubes do
 
   describe "for #reserve" do
     before do
-      @beanstalk  = Tuber.new('localhost')
+      @beanstalk  = Tuber.new(tuber_address)
       @tube  = @beanstalk.tubes.find 'tube'
       @time = Time.now.to_i
       @tube.put "foo reserve #{@time}"
@@ -205,7 +205,8 @@ describe Tuber::Tubes do
 
   describe "for #reserve_batch" do
     before do
-      @beanstalk = Tuber.new('localhost')
+      require_tuber!
+      @beanstalk = Tuber.new(tuber_address)
       @tube = @beanstalk.tubes.find 'batch_tube'
     end
 
@@ -271,7 +272,7 @@ describe Tuber::Tubes do
       @beanstalk.tubes.watch! 'batch_tube'
       Thread.new do
         sleep 0.2
-        producer = Tuber.new('localhost')
+        producer = Tuber.new(tuber_address)
         producer.tubes.find('batch_tube').put "delayed job"
         producer.close
       end
@@ -283,7 +284,7 @@ describe Tuber::Tubes do
   end # reserve_batch
   describe "for #reserve_job" do
     before do
-      @beanstalk = Tuber.new('localhost')
+      @beanstalk = Tuber.new(tuber_address)
       @tube = @beanstalk.tubes.find 'reserve_job_tube'
       @time = Time.now.to_i
       @tube.put "reserve_job test #{@time}"
@@ -306,7 +307,8 @@ describe Tuber::Tubes do
 
   describe "for #stats_group" do
     before do
-      @beanstalk = Tuber.new('localhost')
+      require_tuber!
+      @beanstalk = Tuber.new(tuber_address)
       @tube = @beanstalk.tubes.find 'stats_group_tube'
       @group_name = "test_group_#{Time.now.to_i}"
       2.times { @tube.put "group job", grp: @group_name }

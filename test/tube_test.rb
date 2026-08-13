@@ -6,7 +6,7 @@ require File.expand_path('../test_helper', __FILE__)
 
 describe Tuber::Tube do
   before do
-    @beanstalk = Tuber.new('localhost')
+    @beanstalk = Tuber.new(tuber_address)
     @tube = Tuber::Tube.new(@beanstalk, 'baz')
   end
 
@@ -251,6 +251,7 @@ describe Tuber::Tube do
   end # clear
   describe "for #flush" do
     before do
+      require_tuber!
       @tube = Tuber::Tube.new(@beanstalk, 'flush_test')
       3.times { |i| @tube.put "flush job #{i}" }
     end
@@ -270,6 +271,7 @@ describe Tuber::Tube do
 
   describe "for #flush_buried" do
     before do
+      require_tuber!
       @tube = Tuber::Tube.new(@beanstalk, 'flush_buried_test')
       @beanstalk.tubes.watch! 'flush_buried_test'
     end

@@ -39,6 +39,24 @@ describe Tuber::Connection do
       assert_equal 'localhost', @bc.host
       assert_equal 11300, @bc.port
     end
+
+    it "should use TUBER_URL over BEANSTALKD_URL from env" do
+      ENV['TUBER_URL'] = tuber_address.to_s
+      ENV['BEANSTALKD_URL'] = 'unreachable.invalid:99999'
+      bc = Tuber::Connection.new(nil)
+      assert_equal tuber_address.to_s, bc.address
+    ensure
+      ENV.delete('TUBER_URL')
+      ENV.delete('BEANSTALKD_URL')
+    end
+
+    it "should fall back to BEANSTALKD_URL from env" do
+      ENV['BEANSTALKD_URL'] = tuber_address.to_s
+      bc = Tuber::Connection.new(nil)
+      assert_equal tuber_address.to_s, bc.address
+    ensure
+      ENV.delete('BEANSTALKD_URL')
+    end
   end # new
 
   describe 'for timeout configuration' do
@@ -214,7 +232,8 @@ describe Tuber::Connection do
 
   describe 'for idempotent insert response' do
     before do
-      @host = 'localhost'
+      require_tuber!
+      @host = tuber_address
       @bc = Tuber::Connection.new(@host)
       @idp_key = "testkey_#{Time.now.to_f}"
     end
