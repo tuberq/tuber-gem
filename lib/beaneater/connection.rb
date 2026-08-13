@@ -38,6 +38,17 @@ class Beaneater
     # Default port value for beanstalk connection
     DEFAULT_PORT = 11300
 
+    # Commands that must not be retransmitted after a dropped connection.
+    # The socket dying between write and readline leaves the first send's
+    # fate unknown: a re-sent put can insert a duplicate job, and a re-sent
+    # delete/release/bury/touch acts on a job whose reservation died with
+    # the old socket — the server answers NOT_FOUND for work that actually
+    # succeeded. For these verbs the connection is healed but the original
+    # error is re-raised so the caller decides. Everything else (reserve,
+    # watch, stats, peek, ...) converges to the same state on a re-send and
+    # keeps the transparent retry.
+    NON_IDEMPOTENT_COMMANDS = %w[put delete delete-batch release bury touch touch-all kick kick-job].freeze
+
     # Initializes new connection.
     #
     # @param [String] address beanstalkd instance address.
@@ -72,7 +83,9 @@ class Beaneater
     #   @conn.transmit('stats')
     #
     def transmit(command, **options)
-      _with_retry(**options.slice(:retry_interval, :init)) do
+      verb = command.to_s[/\A\S+/]
+      retransmit = !NON_IDEMPOTENT_COMMANDS.include?(verb)
+      _with_retry(retransmit: retransmit, **options.slice(:retry_interval, :init)) do
         @mutex.synchronize do
           _raise_not_connected! unless connection
 
@@ -133,7 +146,7 @@ class Beaneater
     # @return [Hash] with :deleted and :not_found counts
     #
     def delete_batch(ids)
-      _with_retry do
+      _with_retry(retransmit: false) do
         @mutex.synchronize do
           _raise_not_connected! unless connection
 
@@ -281,15 +294,19 @@ class Beaneater
     #
     # @param [Proc] block The command to execute.
     # @param [Integer] retry_interval The time to wait before the next retry
+    # @param [Boolean] retransmit Whether the command is safe to re-send after
+    #   a reconnect. When false the connection is still healed (reconnect +
+    #   tube re-init) but the original connection error is re-raised.
     # @param [Integer] tries The maximum number of tries in draining mode
     # @return [Object] Result of the block passed
     #
-    def _with_retry(retry_interval: DEFAULT_RETRY_INTERVAL, init: true, tries: MAX_RETRIES, &block)
+    def _with_retry(retry_interval: DEFAULT_RETRY_INTERVAL, init: true, tries: MAX_RETRIES, retransmit: true, &block)
       yield
     rescue EOFError, Errno::ECONNRESET, Errno::EPIPE,
       Errno::ECONNREFUSED => ex
       _reconnect(ex, retry_interval)
       _initialize_tubes if init
+      raise ex unless retransmit
       retry
     rescue Beaneater::DrainingError
       tries -= 1
