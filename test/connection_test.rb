@@ -130,13 +130,46 @@ describe Russet::Connection do
       assert_equal 'INSERTED', res[:status]
     end
 
-    it "should retry command with success after one connection failure" do
+    it "should retry idempotent command with success after one connection failure" do
       TCPSocket.any_instance.expects(:readline).times(2).
         raises(EOFError.new).then.
-        returns("DELETED 56\nFOO")
+        returns("USING foo\n")
 
-      res = @bc.transmit "delete 56\r\n"
-      assert_equal 'DELETED', res[:status]
+      res = @bc.transmit "use foo\r\n"
+      assert_equal 'USING', res[:status]
+    end
+
+    it "should not retransmit delete after a connection failure" do
+      TCPSocket.any_instance.expects(:readline).times(1).raises(EOFError.new)
+
+      assert_raises(EOFError) { @bc.transmit "delete 56\r\n" }
+    end
+
+    it "should not retransmit put after a connection failure" do
+      TCPSocket.any_instance.expects(:readline).times(1).raises(Errno::ECONNRESET.new)
+
+      assert_raises(Errno::ECONNRESET) { @bc.transmit "put 0 0 100 4\r\ndata" }
+    end
+
+    it "heals the connection after a non-retransmitted failure" do
+      $eof_once = false
+      TCPSocket.prepend(Module.new do
+        def readline
+          if $eof_once == false
+            $eof_once = true
+            raise EOFError
+          end
+          super
+        end
+      end)
+
+      assert_raises(EOFError) { @bc.transmit "delete 56\r\n" }
+
+      # The reconnect still happened, so the next command works.
+      res = @bc.transmit "use foo"
+      assert_equal 'USING', res[:status]
+    ensure
+      $eof_once = true
     end
 
     it "should fail after exceeding retries with DrainingError" do
@@ -172,7 +205,10 @@ describe Russet::Connection do
 
       assert_equal %w[another], client.tubes.watched.map(&:name)
     ensure
-      $called = nil
+      # Leave the prepended module inert: with $called reset to nil it would
+      # fire one more EOFError at an arbitrary later readline, which a
+      # non-retransmitted command (delete/put) now surfaces as a failure.
+      $called = true
     end
   end # transmit
 
