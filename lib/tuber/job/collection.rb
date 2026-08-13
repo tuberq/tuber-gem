@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class Russet
+class Tuber
   # Exception to stop processing jobs during a `process!` loop.
   # Simply `raise AbortProcessingError` in any job process handler to stop the processing loop.
   class AbortProcessingError < RuntimeError; end
@@ -11,9 +11,9 @@ class Russet
     # @!attribute processors
     #   @return [Array<Proc>] returns Collection of proc to handle beanstalkd jobs
     # @!attribute client
-    #   @return [Russet] returns the client instance
+    #   @return [Tuber] returns the client instance
     # @!attribute current_job
-    #   @return [Russet] returns the currently processing job in the process loop
+    #   @return [Tuber] returns the currently processing job in the process loop
     attr_reader :processors, :client, :current_job
 
     # Number of retries to process a job.
@@ -27,9 +27,9 @@ class Russet
 
     # Creates new jobs instance.
     #
-    # @param [Russet] client The russet client instance.
+    # @param [Tuber] client The tuber client instance.
     # @example
-    #  Russet::Jobs.new(@client)
+    #  Tuber::Jobs.new(@client)
     #
     def initialize(client)
       @client = client
@@ -37,7 +37,7 @@ class Russet
 
     # Delegates transmit to the connection object.
     #
-    # @see Russet::Connection#transmit
+    # @see Tuber::Connection#transmit
     def transmit(command, options={})
       client.connection.transmit(command, **options)
     end
@@ -45,17 +45,17 @@ class Russet
     # Peek (or find) job by id from beanstalkd.
     #
     # @param [Integer] id Job id to find
-    # @return [Russet::Job] Job matching given id
+    # @return [Tuber::Job] Job matching given id
     # @example
-    #   @russet.jobs[123] # => <Russet::Job>
-    #   @russet.jobs.find(123) # => <Russet::Job>
-    #   @russet.jobs.peek(123) # => <Russet::Job>
+    #   @tuber.jobs[123] # => <Tuber::Job>
+    #   @tuber.jobs.find(123) # => <Tuber::Job>
+    #   @tuber.jobs.peek(123) # => <Tuber::Job>
     #
     # @api public
     def find(id)
       res = transmit("peek #{id}")
       Job.new(client, res)
-    rescue Russet::NotFoundError
+    rescue Tuber::NotFoundError
       nil
     end
     alias_method :peek, :find
@@ -74,7 +74,7 @@ class Russet
     #
     # @return [Integer] Number of held jobs whose deadline was extended
     # @example
-    #   @russet.jobs.touch_all # => 10
+    #   @tuber.jobs.touch_all # => 10
     #
     # @api public
     def touch_all
@@ -143,7 +143,7 @@ class Russet
           end
         rescue AbortProcessingError
           break
-        rescue Russet::JobNotReserved, Russet::NotFoundError, Russet::TimedOutError
+        rescue Tuber::JobNotReserved, Tuber::NotFoundError, Tuber::TimedOutError
           retry
         rescue StandardError # handles unspecified errors
           @current_job.bury if @current_job
@@ -154,4 +154,4 @@ class Russet
       end
     end # process!
   end # Jobs
-end # Russet
+end # Tuber

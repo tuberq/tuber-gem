@@ -37,8 +37,8 @@ describe "Reading from socket client" do
     slept = 0
     while @beanstalk.nil?
       begin
-        @beanstalk = Russet.new("localhost:#{@fake_port}")
-      rescue Russet::NotConnected
+        @beanstalk = Tuber.new("localhost:#{@fake_port}")
+      rescue Tuber::NotConnected
         raise 'Could not connect to fake beanstalkd server' if slept > 1
         sleep 0.1
         slept += 0.1

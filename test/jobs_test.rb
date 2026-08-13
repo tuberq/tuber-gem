@@ -4,10 +4,10 @@
 
 require File.expand_path('../test_helper', __FILE__)
 
-describe Russet::Jobs do
+describe Tuber::Jobs do
   before do
-    @beanstalk = Russet.new('localhost')
-    @jobs = Russet::Jobs.new(@beanstalk)
+    @beanstalk = Tuber.new('localhost')
+    @jobs = Tuber::Jobs.new(@beanstalk)
     @tube = @beanstalk.tubes.find('baz')
   end
 
@@ -35,7 +35,7 @@ describe Russet::Jobs do
     end
 
     it "should return nil for invalid negative id" do
-      assert_raises(Russet::BadFormatError) { @jobs.find(-1) }
+      assert_raises(Tuber::BadFormatError) { @jobs.find(-1) }
     end
   end # find
 
@@ -107,7 +107,7 @@ describe Russet::Jobs do
       @jobs.register('tube_success', :retry_on => [Timeout::Error]) do |job|
         # p job.body
         $foo << job.body
-        raise Russet::AbortProcessingError if job.body =~ /abort/
+        raise Tuber::AbortProcessingError if job.body =~ /abort/
       end
 
       @jobs.register('tube_release', :retry_on => [Timeout::Error], :max_retries => 2) do |job|
@@ -148,4 +148,4 @@ describe Russet::Jobs do
       assert_equal 1, @beanstalk.tubes.find('tube_buried').stats.current_jobs_buried
     end
   end # for_process!
-end # Russet::Jobs
+end # Tuber::Jobs

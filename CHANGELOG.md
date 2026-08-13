@@ -1,11 +1,13 @@
-# CHANGELOG for Russet
+# CHANGELOG for the tuber gem
 
-Russet is a fork of [beaneater](https://github.com/beanstalkd/beaneater), taken at
+The tuber gem is a fork of [beaneater](https://github.com/beanstalkd/beaneater), taken at
 beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for reference.
+(0.0.1 was an empty placeholder published to claim the gem name.)
 
 ## 1.0.0 (unreleased)
 
-* **Renamed from `beaneater` to `russet`.** The `Beaneater` class is now `Russet`, and `require 'beaneater'` becomes `require 'russet'`. Nothing else changed in the rename — see "Migrating from beaneater" in the README.
+* **Renamed from `beaneater` to `tuber`** (briefly `russet` while the gem name was being freed up, though never published under that name). The `Beaneater` class is now `Tuber`, and `require 'beaneater'` becomes `require 'tuber'`. Nothing else changed in the rename — see "Migrating from beaneater" in the README.
+* Fix `_with_retry` retransmitting non-idempotent commands (`put`/`delete`/`release`/`bury`/`touch`/`kick` and batch variants) after a reconnect: the first send's fate is unknown, so a re-sent `put` could duplicate a job and a re-sent `delete` could raise `NOT_FOUND` for work that succeeded. These verbs now reconnect (and re-watch tubes) but re-raise the original connection error so the caller decides; idempotent commands keep the transparent retry.
 * Add `Jobs#touch_all` (Tuber 0.12.0+): one-command heartbeat for every job the connection holds, returning how many were still held
 * Add `Tube#flush_buried` (Tuber only): atomically deletes only the buried jobs in a tube, returning the count
 * Add optional long-poll `timeout` to `reserve_batch` (Tuber only): `tubes.reserve_batch(count, timeout)` blocks up to `timeout` seconds for the first job, then drains what's ready

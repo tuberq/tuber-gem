@@ -4,9 +4,9 @@
 
 require File.expand_path('../test_helper', __FILE__)
 
-describe Russet::Job do
+describe Tuber::Job do
   before do
-    @beanstalk  = Russet.new('localhost')
+    @beanstalk  = Tuber.new('localhost')
     @tube  = @beanstalk.tubes.find 'tube'
   end
 
@@ -39,14 +39,14 @@ describe Russet::Job do
 
     it "should not bury if not reserved" do
       job = @tube.peek(:ready)
-      assert_raises(Russet::JobNotReserved) { job.bury }
+      assert_raises(Tuber::JobNotReserved) { job.bury }
     end
 
     it "should not bury if reserved and deleted" do
       job = @tube.reserve
       job.delete
       assert_equal false, job.reserved
-      assert_raises(Russet::NotFoundError) { job.bury }
+      assert_raises(Tuber::NotFoundError) { job.bury }
     end
   end # bury
 
@@ -78,13 +78,13 @@ describe Russet::Job do
 
     it "should not released if not reserved" do
       job = @tube.peek(:ready)
-      assert_raises(Russet::JobNotReserved) { job.release }
+      assert_raises(Tuber::JobNotReserved) { job.release }
     end
 
     it "should not release if not reserved and buried" do
       job = @tube.reserve
       job.bury
-      assert_raises(Russet::JobNotReserved) { job.release }
+      assert_raises(Tuber::JobNotReserved) { job.release }
     end
   end # release
 
@@ -116,19 +116,19 @@ describe Russet::Job do
 
     it "should not touch if not reserved" do
       job = @tube.peek(:ready)
-      assert_raises(Russet::JobNotReserved) { job.touch }
+      assert_raises(Tuber::JobNotReserved) { job.touch }
     end
 
     it "should not touch if not reserved and released" do
       job = @tube.reserve
       job.release
-      assert_raises(Russet::JobNotReserved) { job.touch }
+      assert_raises(Tuber::JobNotReserved) { job.touch }
     end
 
     it "should not touch if reserved and deleted" do
       job = @tube.reserve
       job.delete
-      assert_raises(Russet::NotFoundError) { job.touch }
+      assert_raises(Tuber::NotFoundError) { job.touch }
     end
   end # touch
 
@@ -163,7 +163,7 @@ describe Russet::Job do
 
     it "should return nil for deleted job with no stats" do
       @job.delete
-      assert_raises(Russet::NotFoundError) { @job.stats }
+      assert_raises(Tuber::NotFoundError) { @job.stats }
     end
   end # stats
 
@@ -179,7 +179,7 @@ describe Russet::Job do
       assert_equal job.id, @job.id
       assert_equal true, @job.reserved?
       @job.delete
-      assert_raises(Russet::NotFoundError) { @job.reserved? }
+      assert_raises(Tuber::NotFoundError) { @job.reserved? }
     end
   end # reserved?
 
@@ -247,4 +247,4 @@ describe Russet::Job do
       assert_equal 5, @job.delay
     end
   end # delay
-end # Russet::Job
+end # Tuber::Job

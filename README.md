@@ -1,13 +1,13 @@
-# Russet
+# Tuber
 
-A Ruby client for [Tuber](https://github.com/dkam/tuber) and [beanstalkd](https://github.com/beanstalkd/beanstalkd), the simple and fast job queues. Tuber is a Rust rewrite of beanstalkd with extensions including weighted tubes, idempotent/unique jobs, concurrency controls and job dependencies.
+The Ruby client for [Tuber](https://github.com/tuberq/tuber) and [beanstalkd](https://github.com/beanstalkd/beanstalkd), the simple and fast job queues. Tuber is a Rust rewrite of beanstalkd with extensions including weighted tubes, idempotent/unique jobs, concurrency controls and job dependencies.
 
-Russet is a fork of [beaneater](https://github.com/beanstalkd/beaneater) that adds support for Tuber's protocol extensions. It stays fully compatible with stock beanstalkd — if you only talk to beanstalkd, Russet behaves as beaneater does.
+This gem is a fork of [beaneater](https://github.com/beanstalkd/beaneater) that adds support for Tuber's protocol extensions. It stays fully compatible with stock beanstalkd — if you only talk to beanstalkd, it behaves as beaneater does.
 
 ## Quick Start
 
 ```ruby
-@beanstalk = Russet.new('localhost:11300')
+@beanstalk = Tuber.new('localhost:11300')
 
 @tube = @beanstalk.tubes["my-tube"]
 @tube.put '{"key": "foo"}', pri: 5
@@ -28,26 +28,26 @@ Install beanstalkd or tuber, then add the gem:
 
 ```ruby
 # Gemfile
-gem 'russet'
+gem 'tuber'
 ```
 
 ## Migrating from beaneater
 
-Russet forked from beaneater 1.1.4. The rename is the only breaking change — every
+Tuber forked from beaneater 1.1.4. The rename is the only breaking change — every
 method, option and return value is unchanged. Two things to update:
 
 ```ruby
 require 'beaneater'                        # before
-require 'russet'                           # after
+require 'tuber'                           # after
 
 @beanstalk = Beaneater.new('localhost:11300')  # before
-@beanstalk = Russet.new('localhost:11300')     # after
+@beanstalk = Tuber.new('localhost:11300')     # after
 ```
 
-That includes the nested constants (`Beaneater::Job` → `Russet::Job`), the error
-classes (`Beaneater::NotConnected` → `Russet::NotConnected`) and the configuration
-block (`Beaneater.configure` → `Russet.configure`). In most codebases a
-case-sensitive `Beaneater` → `Russet` and `beaneater` → `russet` replacement is the
+That includes the nested constants (`Beaneater::Job` → `Tuber::Job`), the error
+classes (`Beaneater::NotConnected` → `Tuber::NotConnected`) and the configuration
+block (`Beaneater.configure` → `Tuber.configure`). In most codebases a
+case-sensitive `Beaneater` → `Tuber` and `beaneater` → `tuber` replacement is the
 whole migration.
 
 The `BEANSTALKD_URL` environment variable keeps its name — it's a beanstalkd
@@ -57,10 +57,10 @@ convention, not a beaneater one.
 
 ### Configuration
 
-To setup advanced options for russet, you can pass configuration options using:
+To setup advanced options for tuber, you can pass configuration options using:
 
 ```ruby
-Russet.configure do |config|
+Tuber.configure do |config|
   # config.default_put_delay   = 0
   # config.default_put_pri     = 65536
   # config.default_put_ttr     = 120
@@ -81,10 +81,10 @@ The above options are all defaults, so only include a configuration block if you
 ### Connection
 
 ```ruby
-@beanstalk = Russet.new('10.0.1.5:11300')
+@beanstalk = Tuber.new('10.0.1.5:11300')
 
 # Or use ENV['BEANSTALKD_URL']
-@beanstalk = Russet.new
+@beanstalk = Tuber.new
 
 @beanstalk.close
 ```
@@ -191,7 +191,7 @@ The loop reserves a job, calls the matching handler, then: deletes on success, r
 
 ### Job Dependencies (Tuber only)
 
-When using [Tuber](https://github.com/dkam/tuber), you can group related jobs and chain dependent work using `group:` and `after:` options on `put`. After-jobs are held until every job in the group they depend on has been deleted:
+When using [Tuber](https://github.com/tuberq/tuber), you can group related jobs and chain dependent work using `group:` and `after:` options on `put`. After-jobs are held until every job in the group they depend on has been deleted:
 
 ```ruby
 # Fan-out: enqueue grouped work
@@ -221,10 +221,10 @@ Prevent duplicate jobs with the `idempotency:` option. If a job with the same ke
 
 ```ruby
 @tube.put "send-report", idempotency: "daily-report"
-# => <Russet::Job id=1 body="send-report">
+# => <Tuber::Job id=1 body="send-report">
 
 @tube.put "send-report", idempotency: "daily-report"
-# => <Russet::Job id=1 body="send-report">  (same job, no duplicate created)
+# => <Tuber::Job id=1 body="send-report">  (same job, no duplicate created)
 ```
 
 The key is scoped to the tube and cleared when the job is deleted, so the same key can be reused afterwards.
@@ -293,7 +293,7 @@ jobs = @beanstalk.tubes.reserve_batch(10, 30)  # block up to 30s for the first j
 ```
 
 While blocked, a positive-timeout batch reserve may raise
-`Russet::DeadlineSoonError` if one of the connection's already-reserved jobs
+`Tuber::DeadlineSoonError` if one of the connection's already-reserved jobs
 is about to hit its TTR — service that job, then reserve again.
 
 ### Batch Touch (Tuber 0.12.0+)
@@ -334,7 +334,7 @@ lost a job.
 ## Configuration
 
 ```ruby
-Russet.configure do |config|
+Tuber.configure do |config|
   config.default_put_delay   = 0
   config.default_put_pri     = 65536
   config.default_put_ttr     = 120
@@ -347,7 +347,7 @@ end
 The `job_serializer` is applied to every `put` body — useful for automatic JSON encoding:
 
 ```ruby
-Russet.configure do |config|
+Tuber.configure do |config|
   config.job_serializer = lambda { |body| JSON.dump(body) }
 end
 ```
@@ -356,25 +356,25 @@ end
 
 | Error                         | Description |
 | ----------------------------- | ----------- |
-| Russet::NotConnected       | Cannot connect to beanstalkd. |
-| Russet::InvalidTubeName    | Tube name is not valid. |
-| Russet::NotFoundError      | Job or tube not found. |
-| Russet::TimedOutError      | Reserve timed out. |
-| Russet::JobNotReserved     | Action requires a reserved job. |
+| Tuber::NotConnected       | Cannot connect to beanstalkd. |
+| Tuber::InvalidTubeName    | Tube name is not valid. |
+| Tuber::NotFoundError      | Job or tube not found. |
+| Tuber::TimedOutError      | Reserve timed out. |
+| Tuber::JobNotReserved     | Action requires a reserved job. |
 
 See the [beanstalk protocol](https://github.com/beanstalkd/beanstalkd/blob/master/doc/protocol.txt) for additional error types.
 
 ## Resources
 
  * [Beanstalkd](https://github.com/beanstalkd/beanstalkd)
- * [Tuber](https://github.com/dkam/tuber)
+ * [Tuber](https://github.com/tuberq/tuber)
  * [Beanstalk protocol](https://github.com/beanstalkd/beanstalkd/blob/master/doc/protocol.txt)
- * [Russet on RubyGems](https://rubygems.org/gems/russet)
+ * [Tuber on RubyGems](https://rubygems.org/gems/tuber)
  * [Backburner](https://github.com/nesquena/backburner) — Ruby job queue for Rails/Sinatra
 
 ## Contributors
 
-Russet is maintained by [Dan Milne](https://github.com/dkam), and builds on the work of
+Tuber is maintained by [Dan Milne](https://github.com/dkam), and builds on the work of
 everyone who wrote beaneater, from which it is forked:
 
  - [Nico Taing](https://github.com/Nico-Taing) - Creator and co-maintainer of beaneater

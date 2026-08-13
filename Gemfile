@@ -2,7 +2,7 @@
 
 source 'https://rubygems.org'
 
-# Specify your gem's dependencies in russet.gemspec
+# Specify your gem's dependencies in tuber.gemspec
 gemspec
 
 group :development do

@@ -3,7 +3,7 @@
 require 'yaml'
 require 'socket'
 
-class Russet
+class Tuber
   # Represents a connection to a beanstalkd instance.
   class Connection
 
@@ -53,16 +53,16 @@ class Russet
     #
     # @param [String] address beanstalkd instance address.
     # @example
-    #   Russet::Connection.new('127.0.0.1')
-    #   Russet::Connection.new('127.0.0.1:11300')
+    #   Tuber::Connection.new('127.0.0.1')
+    #   Tuber::Connection.new('127.0.0.1:11300')
     #
     #   ENV['BEANSTALKD_URL'] = '127.0.0.1:11300'
-    #   @b = Russet.new
+    #   @b = Tuber.new
     #   @b.connection.host # => '127.0.0.1'
     #   @b.connection.port # => '11300'
     #
     def initialize(address)
-      @address = address || _host_from_env || Russet.configuration.beanstalkd_url
+      @address = address || _host_from_env || Tuber.configuration.beanstalkd_url
       @mutex = Mutex.new
       @tube_used = 'default'
       @tubes_watched = ['default']
@@ -78,7 +78,7 @@ class Russet
     # @param [String] command Beanstalkd command
     # @return [Array<Hash{String => String, Number}>] Beanstalkd command response
     # @example
-    #   @conn = Russet::Connection.new
+    #   @conn = Tuber::Connection.new
     #   @conn.transmit('bury 123')
     #   @conn.transmit('stats')
     #
@@ -107,7 +107,7 @@ class Russet
     # @param [Integer] count Maximum number of jobs to reserve
     # @param [Integer] timeout Seconds to long-poll for the first job (nil = non-blocking)
     # @return [Array<Hash>] Array of job hashes with :status, :id, :body keys
-    # @raise [Russet::DeadlineSoonError] A reserved job's TTR is about to expire
+    # @raise [Tuber::DeadlineSoonError] A reserved job's TTR is about to expire
     #
     def reserve_batch(count, timeout = nil)
       _with_retry do
@@ -181,7 +181,7 @@ class Russet
     #  @conn.inspect
     #
     def to_s
-      "#<Russet::Connection host=#{host.inspect} port=#{port.inspect}>"
+      "#<Tuber::Connection host=#{host.inspect} port=#{port.inspect}>"
     end
     alias :inspect :to_s
 
@@ -199,7 +199,7 @@ class Russet
     # Establish a connection based on beanstalk address.
     #
     # @return [Net::TCPSocket] connection for specified address.
-    # @raise [Russet::NotConnected] Could not connect to specified beanstalkd instance.
+    # @raise [Tuber::NotConnected] Could not connect to specified beanstalkd instance.
     # @example
     #  establish_connection('localhost:3005')
     #
@@ -232,7 +232,7 @@ class Russet
     # @param [String] cmd Beanstalk command transmitted
     # @param [String] res Telnet command response
     # @return [Array<Hash{String => String, Number}>] Beanstalk response with `status`, `id`, `body`
-    # @raise [Russet::UnexpectedResponse] Response from beanstalk command was an error status
+    # @raise [Tuber::UnexpectedResponse] Response from beanstalk command was an error status
     # @example
     #  parse_response("delete 56", "DELETED 56\nFOO")
     #   # => { :body => "FOO", :status => "DELETED", :id => 56 }
@@ -269,11 +269,11 @@ class Russet
       response
     end
 
-    # Returns configuration options for russet
+    # Returns configuration options for tuber
     #
-    # @return [Russet::Configuration] configuration object
+    # @return [Tuber::Configuration] configuration object
     def config
-      Russet.configuration
+      Tuber.configuration
     end
 
     private
@@ -308,7 +308,7 @@ class Russet
       _initialize_tubes if init
       raise ex unless retransmit
       retry
-    rescue Russet::DrainingError
+    rescue Tuber::DrainingError
       tries -= 1
       if tries.zero?
         close
@@ -355,10 +355,10 @@ class Russet
     end
 
     # Raises an error to be triggered when the connection has failed
-    # @raise [Russet::NotConnected] Beanstalkd is no longer connected
+    # @raise [Tuber::NotConnected] Beanstalkd is no longer connected
     def _raise_not_connected!
-      raise Russet::NotConnected, "Connection to beanstalk '#{@host}:#{@port}' is closed!"
+      raise Tuber::NotConnected, "Connection to beanstalk '#{@host}:#{@port}' is closed!"
     end
 
   end # Connection
-end # Russet
+end # Tuber

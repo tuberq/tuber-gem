@@ -1,21 +1,21 @@
 # frozen_string_literal: true
 
-class Russet
+class Tuber
   # Beanstalk tube which contains jobs which can be inserted, reserved, et al.
   class Tube
 
     # @!attribute name
     #   @return [String] name of the tube
     # @!attribute client
-    #   @return [Russet] returns the client instance
+    #   @return [Tuber] returns the client instance
     attr_reader :name, :client
 
     # Fetches the specified tube.
     #
-    # @param [Russet] client The russet client instance.
+    # @param [Tuber] client The tuber client instance.
     # @param [String] name The name for this tube.
     # @example
-    #  Russet::Tube.new(@client, 'tube-name')
+    #  Tuber::Tube.new(@client, 'tube-name')
     #
     def initialize(client, name)
       @client = client
@@ -25,7 +25,7 @@ class Russet
 
     # Delegates transmit to the connection object.
     #
-    # @see Russet::Connection#transmit
+    # @see Tuber::Connection#transmit
     def transmit(command, options={})
       client.connection.transmit(command, **options)
     end
@@ -77,9 +77,9 @@ class Russet
     # Peek at next job within this tube in given `state`.
     #
     # @param [String] state The job state to peek at (`ready`, `buried`, `delayed`)
-    # @return [Russet::Job] The next job within this tube.
+    # @return [Tuber::Job] The next job within this tube.
     # @example
-    #  @tube.peek(:ready) # => <Russet::Job id=5 body=foo>
+    #  @tube.peek(:ready) # => <Tuber::Job id=5 body=foo>
     #
     # @api public
     def peek(state)
@@ -87,7 +87,7 @@ class Russet
         res = transmit("peek-#{state}")
         Job.new(client, res)
       end
-    rescue Russet::NotFoundError
+    rescue Tuber::NotFoundError
       # Return nil if not found
       nil
     end
@@ -97,9 +97,9 @@ class Russet
     # @param [Integer] timeout Number of seconds before timing out
     # @param [Proc] block Callback to perform on reserved job
     # @yield [job] Job that was reserved.
-    # @return [Russet::Job] Job that was reserved.
+    # @return [Tuber::Job] Job that was reserved.
     # @example
-    #  @tube.reserve # => <Russet::Job id=5 body=foo>
+    #  @tube.reserve # => <Tuber::Job id=5 body=foo>
     #
     # @api public
     def reserve(timeout=nil, &block)
@@ -121,7 +121,7 @@ class Russet
 
     # Returns related stats for this tube.
     #
-    # @return [Russet::StatStruct] Struct of tube related values
+    # @return [Tuber::StatStruct] Struct of tube related values
     # @example
     #  @tube.stats.current_jobs_delayed # => 24
     #
@@ -179,13 +179,13 @@ class Russet
         while job = self.peek(state.to_sym)
           begin
             job.delete
-          rescue Russet::UnexpectedResponse, Russet::NotFoundError
+          rescue Tuber::UnexpectedResponse, Tuber::NotFoundError
             # swallow any issues
           end
         end
       end
       client.tubes.ignore(name)
-    rescue Russet::NotIgnoredError
+    rescue Tuber::NotIgnoredError
       # swallow any issues
     end
 
@@ -193,10 +193,10 @@ class Russet
     #
     # @return [String] Representation of tube including name.
     # @example
-    #  @tube.to_s # => "#<Russet::Tube name=foo>"
+    #  @tube.to_s # => "#<Tuber::Tube name=foo>"
     #
     def to_s
-      "#<Russet::Tube name=#{name.inspect}>"
+      "#<Tuber::Tube name=#{name.inspect}>"
     end
     alias :inspect :to_s
 
@@ -218,11 +218,11 @@ class Russet
       @mutex.unlock
     end
 
-    # Returns configuration options for russet
+    # Returns configuration options for tuber
     #
-    # @return [Russet::Configuration] configuration object
+    # @return [Tuber::Configuration] configuration object
     def config
-      Russet.configuration
+      Tuber.configuration
     end
   end # Tube
-end # Russet
+end # Tuber

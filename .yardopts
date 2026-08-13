@@ -1,8 +1,8 @@
 --output-dir doc/
 --readme README.md
---title Russet
+--title Tuber
 --markup-provider=redcarpet
 --markup=markdown
 --protected
 --no-private
-lib/russet/**/*.rb
+lib/tuber/**/*.rb

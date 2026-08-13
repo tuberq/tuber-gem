@@ -1,21 +1,21 @@
 # frozen_string_literal: true
 
-require 'russet/stats/fast_struct'
-require 'russet/stats/stat_struct'
+require 'tuber/stats/fast_struct'
+require 'tuber/stats/stat_struct'
 
-class Russet
+class Tuber
   # Represents stats related to the beanstalkd pool.
   class Stats
 
     # @!attribute client
-    #   @return [Russet] returns the client instance
+    #   @return [Tuber] returns the client instance
     attr_reader :client
 
     # Creates new stats instance.
     #
-    # @param [Russet] client The russet client instance.
+    # @param [Tuber] client The tuber client instance.
     # @example
-    #  Russet::Stats.new(@client)
+    #  Tuber::Stats.new(@client)
     #
     def initialize(client)
       @client = client
@@ -69,7 +69,7 @@ class Russet
 
     # Returns struct based on stats data from response.
     #
-    # @return [Russet::StatStruct] the stats
+    # @return [Tuber::StatStruct] the stats
     # @example
     #  self.data # => { 'version' : 1.7, 'total_connections' : 23 }
     #  self.data.total_connections # => 23
@@ -78,4 +78,4 @@ class Russet
       StatStruct.from_hash(client.connection.transmit('stats')[:body])
     end
   end # Stats
-end # Russet
+end # Tuber

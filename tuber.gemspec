@@ -1,20 +1,33 @@
-Gem::Specification.new do |s|
-  s.name        = "tuber"
-  s.version     = "0.0.1"
-  s.summary     = "Ruby client for the Tuber job queue server"
-  s.description = "Ruby client for Tuber, a fast beanstalkd-compatible job queue server. This release reserves the gem name; use the russet gem for a full-featured client in the meantime."
-  s.authors     = ["Dan Milne"]
-  s.email       = ["d@nmilne.com"]
-  s.homepage    = "https://github.com/tuberq/tuber-gem"
-  s.license     = "MIT"
+# frozen_string_literal: true
+# -*- encoding: utf-8 -*-
+lib = File.expand_path('../lib', __FILE__)
+$LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
+require 'tuber/version'
 
-  s.required_ruby_version = ">= 2.7.0"
+Gem::Specification.new do |gem|
+  gem.name          = "tuber"
+  gem.version       = Tuber::VERSION
+  gem.authors       = ["Dan Milne", "Nico Taing"]
+  gem.email         = ["d@nmilne.com"]
+  gem.description   = %q{Ruby client for Tuber and beanstalkd job queues. A fork of beaneater with support for Tuber's protocol extensions.}
+  gem.summary       = %q{Ruby client for Tuber and beanstalkd.}
+  gem.homepage      = "https://github.com/tuberq/tuber-gem"
+  gem.license       = 'MIT'
 
-  s.metadata = {
-    "source_code_uri" => s.homepage,
-    "bug_tracker_uri" => "#{s.homepage}/issues",
+  gem.required_ruby_version = '>= 2.7.0'
+
+  gem.metadata = {
+    'source_code_uri'   => gem.homepage,
+    'changelog_uri'     => "#{gem.homepage}/blob/main/CHANGELOG.md",
+    'bug_tracker_uri'   => "#{gem.homepage}/issues",
   }
 
-  s.files         = ["README.md", "lib/tuber.rb"]
-  s.require_paths = ["lib"]
+  gem.files         = `git ls-files`.split($/)
+  gem.executables   = gem.files.grep(%r{^bin/}).map{ |f| File.basename(f) }
+  gem.require_paths = ["lib"]
+  gem.add_development_dependency 'minitest', "~> 4.1.0"
+  gem.add_development_dependency 'rake'
+  gem.add_development_dependency 'mocha'
+  gem.add_development_dependency 'term-ansicolor'
+  gem.add_development_dependency 'json'
 end

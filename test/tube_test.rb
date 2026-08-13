@@ -4,10 +4,10 @@
 
 require File.expand_path('../test_helper', __FILE__)
 
-describe Russet::Tube do
+describe Tuber::Tube do
   before do
-    @beanstalk = Russet.new('localhost')
-    @tube = Russet::Tube.new(@beanstalk, 'baz')
+    @beanstalk = Tuber.new('localhost')
+    @tube = Tuber::Tube.new(@beanstalk, 'baz')
   end
 
   describe "for #put" do
@@ -29,14 +29,14 @@ describe Russet::Tube do
     end
 
     it "should support custom serializer" do
-      Russet.configure.job_serializer = lambda { |b| JSON.dump(b) }
+      Tuber.configure.job_serializer = lambda { |b| JSON.dump(b) }
       @tube.put({ foo: "bar"})
       assert_equal '{"foo":"bar"}', @tube.peek(:ready).body
     end
 
     after do
-      Russet::Connection.any_instance.unstub(:transmit)
-      Russet.configure.job_serializer = lambda { |b| b }
+      Tuber::Connection.any_instance.unstub(:transmit)
+      Tuber.configure.job_serializer = lambda { |b| b }
     end
   end # put
 
@@ -90,14 +90,14 @@ describe Russet::Tube do
     end
 
     it "should support custom parser" do
-      Russet.configure.job_parser = lambda { |b| JSON.parse(b) }
+      Tuber.configure.job_parser = lambda { |b| JSON.parse(b) }
       json = '{"message": "hi: there! this: is a long message"}'
       @tube.put(json)
       assert_equal 'hi: there! this: is a long message', @tube.peek(:ready).body['message']
     end
 
     after do
-      Russet.configure.job_parser = lambda { |b| b }
+      Tuber.configure.job_parser = lambda { |b| b }
     end
   end # peek
 
@@ -121,14 +121,14 @@ describe Russet::Tube do
     end
 
     it "should support custom parser" do
-      Russet.configure.job_parser = lambda { |b| JSON.parse(b) }
+      Tuber.configure.job_parser = lambda { |b| JSON.parse(b) }
       @job = @tube.reserve
       assert_equal "#{@time} bar", @job.body['foo']
       @job.delete
     end
 
     after do
-      Russet.configure.job_parser = lambda { |b| b }
+      Tuber.configure.job_parser = lambda { |b| b }
     end
   end # reserve
 
@@ -140,7 +140,7 @@ describe Russet::Tube do
       @tubes = stub
       @tubes.stubs(:use).with('baz').returns('baz')
       @beanstalk.stubs(:tubes).returns(@tubes)
-      @tube = Russet::Tube.new(@beanstalk, 'baz')
+      @tube = Tuber::Tube.new(@beanstalk, 'baz')
     end
 
     it "should append idp tag as string" do
@@ -187,7 +187,7 @@ describe Russet::Tube do
   describe "for #pause" do
     before do
       @time = Time.now.to_i
-      @tube = Russet::Tube.new(@beanstalk, 'bam')
+      @tube = Tuber::Tube.new(@beanstalk, 'bam')
       @tube.put "foo pause #{@time}"
     end
 
@@ -211,7 +211,7 @@ describe Russet::Tube do
     end
 
     it "should raise error for empty tube" do
-      assert_raises(Russet::NotFoundError) { @beanstalk.tubes.find('fake_tube').stats }
+      assert_raises(Tuber::NotFoundError) { @beanstalk.tubes.find('fake_tube').stats }
     end
   end # stats
 
@@ -251,7 +251,7 @@ describe Russet::Tube do
   end # clear
   describe "for #flush" do
     before do
-      @tube = Russet::Tube.new(@beanstalk, 'flush_test')
+      @tube = Tuber::Tube.new(@beanstalk, 'flush_test')
       3.times { |i| @tube.put "flush job #{i}" }
     end
 
@@ -270,7 +270,7 @@ describe Russet::Tube do
 
   describe "for #flush_buried" do
     before do
-      @tube = Russet::Tube.new(@beanstalk, 'flush_buried_test')
+      @tube = Tuber::Tube.new(@beanstalk, 'flush_buried_test')
       @beanstalk.tubes.watch! 'flush_buried_test'
     end
 
@@ -294,4 +294,4 @@ describe Russet::Tube do
       assert_equal 0, @tube.flush_buried
     end
   end # flush_buried
-end # Russet::Tube
+end # Tuber::Tube

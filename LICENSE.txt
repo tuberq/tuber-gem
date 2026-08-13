@@ -1,7 +1,7 @@
 Copyright (c) 2012 Nico Taing
 Copyright (c) 2026 Dan Milne
 
-Russet is a fork of beaneater (https://github.com/beanstalkd/beaneater),
+Tuber is a fork of beaneater (https://github.com/beanstalkd/beaneater),
 originally written by Nico Taing and contributors, and is distributed under
 the same MIT License.
 

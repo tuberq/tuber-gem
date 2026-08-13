@@ -1,20 +1,20 @@
 # frozen_string_literal: true
 
-class Russet
+class Tuber
   # Represents collection of tube related commands.
 
   class Tubes
     include Enumerable
 
     # @!attribute client
-    #   @return [Russet] returns the client instance
+    #   @return [Tuber] returns the client instance
     attr_reader :client
 
     # Creates new tubes instance.
     #
-    # @param [Russet] client The russet client instance.
+    # @param [Tuber] client The tuber client instance.
     # @example
-    #  Russet::Tubes.new(@client)
+    #  Tuber::Tubes.new(@client)
     #
     def initialize(client)
       @client = client
@@ -30,7 +30,7 @@ class Russet
 
     # Delegates transmit to the connection object.
     #
-    # @see Russet::Connection#transmit
+    # @see Tuber::Connection#transmit
     def transmit(command, **options)
       client.connection.transmit(command, **options)
     end
@@ -38,11 +38,11 @@ class Russet
     # Finds the specified beanstalk tube.
     #
     # @param [String] tube_name Name of the beanstalkd tube
-    # @return [Russet::Tube] specified tube
+    # @return [Tuber::Tube] specified tube
     # @example
     #   @pool.tubes.find('tube2')
     #   @pool.tubes['tube2']
-    #     # => <Russet::Tube name="tube2">
+    #     # => <Tuber::Tube name="tube2">
     #
     # @api public
     def find(tube_name)
@@ -54,11 +54,11 @@ class Russet
     #
     # @param [Integer] timeout Number of seconds before timing out.
     # @param [Proc] block Callback to perform on the reserved job.
-    # @yield [job] Reserved russet job.
-    # @return [Russet::Job] Reserved russet job.
+    # @yield [job] Reserved tuber job.
+    # @return [Tuber::Job] Reserved tuber job.
     # @example
     #   @client.tubes.reserve { |job| process(job) }
-    #     # => <Russet::Job id=5 body="foo">
+    #     # => <Tuber::Job id=5 body="foo">
     #
     # @api public
     def reserve(timeout=nil, &block)
@@ -77,12 +77,12 @@ class Russet
     #
     # @param [Integer] count Maximum number of jobs to reserve
     # @param [Integer] timeout Seconds to long-poll for the first job (nil = non-blocking)
-    # @return [Array<Russet::Job>] Array of reserved jobs (empty if none available)
-    # @raise [Russet::DeadlineSoonError] A reserved job's TTR is about to expire
+    # @return [Array<Tuber::Job>] Array of reserved jobs (empty if none available)
+    # @raise [Tuber::DeadlineSoonError] A reserved job's TTR is about to expire
     # @example
     #   @client.tubes.reserve_batch(10)       # non-blocking
     #   @client.tubes.reserve_batch(10, 30)   # long-poll up to 30s
-    #     # => [<Russet::Job id=1 body="foo">, ...]
+    #     # => [<Tuber::Job id=1 body="foo">, ...]
     #
     # @api public
     def reserve_batch(count, timeout = nil)
@@ -106,23 +106,23 @@ class Russet
     # Reserves a specific job by its ID.
     #
     # @param [Integer, String] id The job ID to reserve
-    # @return [Russet::Job, nil] The reserved job, or nil if not found
+    # @return [Tuber::Job, nil] The reserved job, or nil if not found
     # @example
     #   @client.tubes.reserve_job(123)
-    #     # => <Russet::Job id=123 body="foo">
+    #     # => <Tuber::Job id=123 body="foo">
     #
     # @api public
     def reserve_job(id)
       res = transmit("reserve-job #{id}")
       Job.new(client, res)
-    rescue Russet::NotFoundError
+    rescue Tuber::NotFoundError
       nil
     end
 
     # Returns stats for a job group.
     #
     # @param [String] group The group name
-    # @return [Russet::StatStruct] Struct of group stats
+    # @return [Tuber::StatStruct] Struct of group stats
     # @example
     #   @client.tubes.stats_group('batch-1')
     #     # => #<StatStruct name="batch-1" ready=5 reserved=0 delayed=0 buried=0 waiting_jobs=0>
@@ -135,10 +135,10 @@ class Russet
 
     # List of all known beanstalk tubes.
     #
-    # @return [Array<Russet::Tube>] List of all beanstalk tubes.
+    # @return [Array<Tuber::Tube>] List of all beanstalk tubes.
     # @example
     #   @client.tubes.all
-    #     # => [<Russet::Tube name="tube2">, <Russet::Tube name="tube3">]
+    #     # => [<Tuber::Tube name="tube2">, <Tuber::Tube name="tube3">]
     #
     # @api public
     def all
@@ -160,10 +160,10 @@ class Russet
 
     # List of watched beanstalk tubes.
     #
-    # @return [Array<Russet::Tube>] List of watched beanstalk tubes.
+    # @return [Array<Tuber::Tube>] List of watched beanstalk tubes.
     # @example
     #   @client.tubes.watched
-    #     # => [<Russet::Tube name="tube2">, <Russet::Tube name="tube3">]
+    #     # => [<Tuber::Tube name="tube2">, <Tuber::Tube name="tube3">]
     #
     # @api public
     def watched
@@ -176,10 +176,10 @@ class Russet
 
     # Currently used beanstalk tube.
     #
-    # @return [Russet::Tube] Currently used beanstalk tube.
+    # @return [Tuber::Tube] Currently used beanstalk tube.
     # @example
     #   @client.tubes.used
-    #     # => <Russet::Tube name="tube2">
+    #     # => <Tuber::Tube name="tube2">
     #
     # @api public
     def used
@@ -190,7 +190,7 @@ class Russet
     # Add specified beanstalkd tubes as watched.
     #
     # @param [*String] names Name of tubes to watch
-    # @raise [Russet::InvalidTubeName] Tube to watch was invalid.
+    # @raise [Tuber::InvalidTubeName] Tube to watch was invalid.
     # @example
     #   @client.tubes.watch('foo', 'bar')
     #
@@ -208,7 +208,7 @@ class Russet
     # Add specified beanstalkd tubes as watched and ignores all other tubes.
     #
     # @param [*String] names Name of tubes to watch
-    # @raise [Russet::InvalidTubeName] Tube to watch was invalid.
+    # @raise [Tuber::InvalidTubeName] Tube to watch was invalid.
     # @example
     #   @client.tubes.watch!('foo', 'bar')
     #
@@ -247,4 +247,4 @@ class Russet
       raise InvalidTubeName, "Tube cannot be named '#{tube}'"
     end
   end # Tubes
-end # Russet
+end # Tuber

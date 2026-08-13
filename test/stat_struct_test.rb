@@ -4,10 +4,10 @@
 
 require File.expand_path('../test_helper', __FILE__)
 
-describe Russet::StatStruct do
+describe Tuber::StatStruct do
   before do
     @hash = { :foo => "bar", :bar => "baz", :baz => "foo", :"under-score" => "demo" }
-    @struct = Russet::StatStruct.from_hash(@hash)
+    @struct = Tuber::StatStruct.from_hash(@hash)
   end
 
   describe "for #from_hash" do
@@ -55,4 +55,4 @@ describe Russet::StatStruct do
       assert_equal [['foo', 'bar'], ['bar', 'baz'], ['baz', 'foo'], ['under_score', 'demo']].sort, @struct.to_h.sort
     end
   end # to_h
-end # Russet::StatStruct
+end # Tuber::StatStruct

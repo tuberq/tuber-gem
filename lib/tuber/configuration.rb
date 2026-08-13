@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class Russet
+class Tuber
   class Configuration
     attr_accessor :default_put_delay   # default delay value to put a job
     attr_accessor :default_put_pri     # default priority value to put a job
@@ -26,4 +26,4 @@ class Russet
       @write_timeout       = nil
     end
   end # Configuration
-end # Russet
+end # Tuber
