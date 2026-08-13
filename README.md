@@ -1,14 +1,384 @@
-# tuber
+# Russet
 
-Ruby client for [Tuber](https://github.com/tuberq/tuber), a fast job queue server written in Rust. Tuber is wire-compatible with [beanstalkd](https://github.com/beanstalkd/beanstalkd) and extends it with unique jobs, concurrency control, job group pipelines, batch operations, weighted queues, and offloaded job bodies.
+A Ruby client for [Tuber](https://github.com/dkam/tuber) and [beanstalkd](https://github.com/beanstalkd/beanstalkd), the simple and fast job queues. Tuber is a Rust rewrite of beanstalkd with extensions including weighted tubes, idempotent/unique jobs, concurrency controls and job dependencies.
 
-**This gem currently reserves the name while the client is finalized.** In the meantime, use [russet](https://github.com/dkam/russet) — a beaneater fork with full support for Tuber's protocol extensions — to talk to Tuber or beanstalkd from Ruby.
+Russet is a fork of [beaneater](https://github.com/beanstalkd/beaneater) that adds support for Tuber's protocol extensions. It stays fully compatible with stock beanstalkd — if you only talk to beanstalkd, Russet behaves as beaneater does.
 
-## Links
+## Quick Start
 
-- Tuber server: https://github.com/tuberq/tuber
-- Ruby client (current): https://github.com/dkam/russet
+```ruby
+@beanstalk = Russet.new('localhost:11300')
 
-## License
+@tube = @beanstalk.tubes["my-tube"]
+@tube.put '{"key": "foo"}', pri: 5
+@tube.put '{"key": "bar"}', delay: 3
 
-MIT
+while @tube.peek(:ready)
+  job = @tube.reserve
+  puts job.body
+  job.delete
+end
+
+@beanstalk.close
+```
+
+## Installation
+
+Install beanstalkd or tuber, then add the gem:
+
+```ruby
+# Gemfile
+gem 'russet'
+```
+
+## Migrating from beaneater
+
+Russet forked from beaneater 1.1.4. The rename is the only breaking change — every
+method, option and return value is unchanged. Two things to update:
+
+```ruby
+require 'beaneater'                        # before
+require 'russet'                           # after
+
+@beanstalk = Beaneater.new('localhost:11300')  # before
+@beanstalk = Russet.new('localhost:11300')     # after
+```
+
+That includes the nested constants (`Beaneater::Job` → `Russet::Job`), the error
+classes (`Beaneater::NotConnected` → `Russet::NotConnected`) and the configuration
+block (`Beaneater.configure` → `Russet.configure`). In most codebases a
+case-sensitive `Beaneater` → `Russet` and `beaneater` → `russet` replacement is the
+whole migration.
+
+The `BEANSTALKD_URL` environment variable keeps its name — it's a beanstalkd
+convention, not a beaneater one.
+
+## Usage
+
+### Configuration
+
+To setup advanced options for russet, you can pass configuration options using:
+
+```ruby
+Russet.configure do |config|
+  # config.default_put_delay   = 0
+  # config.default_put_pri     = 65536
+  # config.default_put_ttr     = 120
+  # config.job_parser          = lambda { |body| body }
+  # config.job_serializer      = lambda { |body| body }
+  # config.beanstalkd_url      = 'localhost:11300'
+  # config.connect_timeout     = nil
+  # config.resolv_timeout      = nil
+  # config.read_timeout        = nil
+  # config.write_timeout       = nil
+end
+```
+
+The above options are all defaults, so only include a configuration block if you need to make changes.
+
+`connect_timeout` and `resolv_timeout` are passed through to `TCPSocket.new` on Ruby 3.0 and newer (ignored on Ruby < 3.0 for compatibility). `read_timeout` and `write_timeout` apply socket read and write timeouts via `setsockopt`.
+
+### Connection
+
+```ruby
+@beanstalk = Russet.new('10.0.1.5:11300')
+
+# Or use ENV['BEANSTALKD_URL']
+@beanstalk = Russet.new
+
+@beanstalk.close
+```
+
+### Tubes
+
+Tubes are beanstalk's work queues. Jobs are `put` into the used tube and `reserve`d from watched tubes. Each tube has a _ready_, _delayed_, and _buried_ queue.
+
+```ruby
+@tube = @beanstalk.tubes.find("some-tube")
+
+# Watch tubes for reserving jobs
+@beanstalk.tubes.watch!('some-tube')        # watch only these tubes
+@beanstalk.tubes.watch('another-tube')       # append to watch list
+@beanstalk.tubes.ignore('some-tube')         # stop watching
+
+# List tubes
+@beanstalk.tubes.all       # => [<Tube name='foo'>, <Tube name='bar'>]
+@beanstalk.tubes.used      # => <Tube name='bar'>
+@beanstalk.tubes.watched   # => [<Tube name='foo'>]
+
+# Manage tubes
+@tube.pause(3)        # pause for 3 seconds
+@tube.clear           # delete all jobs
+@tube.flush           # delete all jobs, returns count
+@tube.flush_buried    # delete only buried jobs (Tuber only), returns count
+```
+
+Each client manages two separate concerns: **use**/**using** controls where `put` places jobs, and **watch**/**watching** controls where `reserve` takes jobs from. These are fully orthogonal.
+
+### Jobs
+
+A job has a body (string) and metadata. The typical lifecycle:
+
+```
+   put            reserve               delete
+  -----> [READY] ---------> [RESERVED] --------> *poof*
+```
+
+Jobs are in one of three states:
+
+| State   | Description |
+| ------- | ----------- |
+| ready   | Waiting to be reserved and processed. |
+| delayed | Waiting to become ready after a delay. |
+| buried  | Held aside after failure, waiting to be kicked. |
+
+#### Inserting jobs
+
+```ruby
+@tube.put "job-data-here"
+@tube.put({foo: 'bar'}.to_json)
+@tube.put "job-data-here", pri: 1000, delay: 50, ttr: 200
+```
+
+- **pri** — integer < 2^32, lower values run first (default: 65536)
+- **delay** — seconds to wait before the job becomes ready (default: 0)
+- **ttr** — time to run, seconds a worker has to finish the job (default: 120)
+
+#### Reserving and processing jobs
+
+```ruby
+job = @beanstalk.tubes.reserve      # blocks until a job is available
+job = @beanstalk.tubes.reserve(5)   # wait up to 5 seconds
+
+puts job.body
+puts job.tube
+puts job.stats.state  # => 'reserved'
+
+job.touch    # extend ttr
+job.delete   # success
+job.release delay: 5  # retry later
+job.bury     # set aside for inspection
+```
+
+#### Peeking and kicking
+
+```ruby
+@beanstalk.jobs.find(123)       # peek at a specific job
+@tube.peek(:ready)              # peek at next ready job
+@tube.peek(:buried)
+@tube.peek(:delayed)
+
+@beanstalk.tubes['some-tube'].kick(3)  # kick 3 buried jobs back to ready
+```
+
+#### Automatic processing
+
+Register handlers for tubes and let `process!` loop over incoming jobs:
+
+```ruby
+@beanstalk.jobs.register('some-tube', retry_on: [SomeError]) do |job|
+  do_something(job)
+end
+
+@beanstalk.jobs.register('other-tube') do |job|
+  do_something_else(job)
+end
+
+@beanstalk.jobs.process!
+```
+
+The loop reserves a job, calls the matching handler, then: deletes on success, releases on `retry_on` errors, and buries on other exceptions. Raise `AbortProcessingError` to stop the loop.
+
+### Job Dependencies (Tuber only)
+
+When using [Tuber](https://github.com/dkam/tuber), you can group related jobs and chain dependent work using `group:` and `after:` options on `put`. After-jobs are held until every job in the group they depend on has been deleted:
+
+```ruby
+# Fan-out: enqueue grouped work
+@tube.put "import-row-1", group: "import"
+@tube.put "import-row-2", group: "import"
+
+# Fan-in: this job waits until all "import" jobs are deleted
+@tube.put "send-summary", after: "import"
+```
+
+Chain stages together by combining `after:` and `group:` on the same job to build a simple DAG pipeline:
+
+```ruby
+@tube.put "row-1", group: "extract"
+@tube.put "row-2", group: "extract"
+@tube.put "transform", after: "extract", group: "transform"
+@tube.put "load",      after: "transform"
+```
+
+Here `transform` waits for the extract group to finish, then becomes part of the `transform` group. `load` waits for `transform` to complete.
+
+Buried jobs block group completion — kick them to let the group finish. Group names are global and can span multiple tubes.
+
+### Unique Jobs / Idempotency (Tuber only)
+
+Prevent duplicate jobs with the `idempotency:` option. If a job with the same key already exists in the tube, the original job is returned instead of creating a duplicate:
+
+```ruby
+@tube.put "send-report", idempotency: "daily-report"
+# => <Russet::Job id=1 body="send-report">
+
+@tube.put "send-report", idempotency: "daily-report"
+# => <Russet::Job id=1 body="send-report">  (same job, no duplicate created)
+```
+
+The key is scoped to the tube and cleared when the job is deleted, so the same key can be reused afterwards.
+
+Add a cooldown TTL to keep deduplicating for N seconds after deletion — useful for preventing rapid resubmission:
+
+```ruby
+@tube.put "send-report", idempotency: "daily-report", idempotency_ttl: 300
+```
+
+### Concurrency Keys (Tuber only)
+
+Limit parallel processing of related jobs. When a job with a concurrency key is reserved, other ready jobs sharing the same key are hidden from `reserve` until the reservation ends:
+
+```ruby
+# Only one job per user can be processed at a time
+@tube.put "process-user-42", concurrency: "user-42"
+@tube.put "process-user-42-again", concurrency: "user-42"
+```
+
+The second job won't be reserved until the first is deleted, released, or buried. Set a higher limit to allow N concurrent reservations:
+
+```ruby
+# Allow up to 3 concurrent API jobs
+@tube.put "api-call-1", concurrency: "api", concurrency_limit: 3
+@tube.put "api-call-2", concurrency: "api", concurrency_limit: 3
+```
+
+### Weighted Tubes (Tuber only)
+
+By default, `reserve` picks the highest-priority job across all watched tubes. Switch to weighted mode to select tubes randomly in proportion to their weight:
+
+```ruby
+@beanstalk.tubes.watch('email')
+@beanstalk.tubes.watch('notifications', weight: 2)
+@beanstalk.tubes.watch('batch-jobs', weight: 6)
+
+@beanstalk.tubes.reserve_mode(:weighted)
+
+job = @beanstalk.tubes.reserve  # batch-jobs selected 6x as often as email
+```
+
+Tubes default to weight 1. Switch back with `reserve_mode(:fifo)`.
+
+### Batch Reserve (Tuber only)
+
+Reserve multiple jobs atomically in a single call:
+
+```ruby
+jobs = @beanstalk.tubes.reserve_batch(10)  # up to 10 jobs
+
+jobs.each do |job|
+  process(job)
+  job.delete
+end
+```
+
+By default `reserve_batch` is non-blocking — it returns whatever is ready
+immediately, possibly an empty array. Pass a timeout (in seconds) to long-poll
+instead: the call blocks until the first job arrives, then drains everything
+ready up to `count`, or returns an empty array when the timeout elapses. This
+avoids hot-looping a worker on empty polls.
+
+```ruby
+jobs = @beanstalk.tubes.reserve_batch(10, 30)  # block up to 30s for the first job
+```
+
+While blocked, a positive-timeout batch reserve may raise
+`Russet::DeadlineSoonError` if one of the connection's already-reserved jobs
+is about to hit its TTR — service that job, then reserve again.
+
+### Batch Touch (Tuber 0.12.0+)
+
+A batch reserve starts the TTR clock on every job at the same instant, but a
+worker processes them serially — so the tail of a large batch can expire and
+return to the queue while the worker is still busy. `touch_all` extends the TTR
+of every job the connection currently holds in a single command:
+
+```ruby
+jobs = @beanstalk.tubes.reserve_batch(10)
+
+jobs.each do |job|
+  process(job)
+  job.delete
+  @beanstalk.jobs.touch_all   # heartbeat whatever is still held
+end
+```
+
+No ids are sent: the server tracks the reserved set per connection, so jobs
+already deleted, released, buried or lost to a TTR timeout are simply absent.
+Each job keeps its own TTR — deadlines are extended individually, not levelled
+onto a common value.
+
+The return value is how many jobs the connection *actually* still holds. A count
+lower than expected means jobs hit their TTR and went back to the queue while the
+worker was busy — otherwise invisible, since nothing notifies a worker that it
+lost a job.
+
+### Stats
+
+```ruby
+@beanstalk.stats                            # server-wide stats
+@beanstalk.tubes['some-tube'].stats         # tube stats
+@beanstalk.jobs[some_job_id].stats          # job stats
+```
+
+## Configuration
+
+```ruby
+Russet.configure do |config|
+  config.default_put_delay   = 0
+  config.default_put_pri     = 65536
+  config.default_put_ttr     = 120
+  config.job_parser          = lambda { |body| body }
+  config.job_serializer      = lambda { |body| body }
+  config.beanstalkd_url      = 'localhost:11300'
+end
+```
+
+The `job_serializer` is applied to every `put` body — useful for automatic JSON encoding:
+
+```ruby
+Russet.configure do |config|
+  config.job_serializer = lambda { |body| JSON.dump(body) }
+end
+```
+
+## Error Handling
+
+| Error                         | Description |
+| ----------------------------- | ----------- |
+| Russet::NotConnected       | Cannot connect to beanstalkd. |
+| Russet::InvalidTubeName    | Tube name is not valid. |
+| Russet::NotFoundError      | Job or tube not found. |
+| Russet::TimedOutError      | Reserve timed out. |
+| Russet::JobNotReserved     | Action requires a reserved job. |
+
+See the [beanstalk protocol](https://github.com/beanstalkd/beanstalkd/blob/master/doc/protocol.txt) for additional error types.
+
+## Resources
+
+ * [Beanstalkd](https://github.com/beanstalkd/beanstalkd)
+ * [Tuber](https://github.com/dkam/tuber)
+ * [Beanstalk protocol](https://github.com/beanstalkd/beanstalkd/blob/master/doc/protocol.txt)
+ * [Russet on RubyGems](https://rubygems.org/gems/russet)
+ * [Backburner](https://github.com/nesquena/backburner) — Ruby job queue for Rails/Sinatra
+
+## Contributors
+
+Russet is maintained by [Dan Milne](https://github.com/dkam), and builds on the work of
+everyone who wrote beaneater, from which it is forked:
+
+ - [Nico Taing](https://github.com/Nico-Taing) - Creator and co-maintainer of beaneater
+ - [Nathan Esquenazi](https://github.com/nesquena) - Contributor and co-maintainer
+ - [Keith Rarick](https://github.com/kr) - Much code inspired and adapted from beanstalk-client
+ - [Vidar Hokstad](https://github.com/vidarh) - Replaced telnet with correct TCP socket handling
+ - [Andreas Loupasakis](https://github.com/alup) - Improve test coverage, improve job configuration

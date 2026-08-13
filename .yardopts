@@ -1,0 +1,8 @@
+--output-dir doc/
+--readme README.md
+--title Russet
+--markup-provider=redcarpet
+--markup=markdown
+--protected
+--no-private
+lib/russet/**/*.rb
