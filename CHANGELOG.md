@@ -4,7 +4,11 @@ The tuber gem is a fork of [beaneater](https://github.com/beanstalkd/beaneater),
 beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for reference.
 (0.0.1 was an empty placeholder published to claim the gem name.)
 
-## 1.0.0 (unreleased)
+## 0.5.0 (August 13 2026)
+
+First functional release under the `tuber` name. Versioning restarts below 1.0
+while the Tuber-first API settles; 1.0.0 will follow once it has. Entries below
+1.1.4 with earlier version numbers are beaneater history.
 
 * **Renamed from `beaneater` to `tuber`** (briefly `russet` while the gem name was being freed up, though never published under that name). The `Beaneater` class is now `Tuber`, and `require 'beaneater'` becomes `require 'tuber'`. Nothing else changed in the rename — see "Migrating from beaneater" in the README.
 * Fix `_with_retry` retransmitting non-idempotent commands (`put`/`delete`/`release`/`bury`/`touch`/`kick` and batch variants) after a reconnect: the first send's fate is unknown, so a re-sent `put` could duplicate a job and a re-sent `delete` could raise `NOT_FOUND` for work that succeeded. These verbs now reconnect (and re-watch tubes) but re-raise the original connection error so the caller decides; idempotent commands keep the transparent retry.
@@ -13,6 +17,8 @@ beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for refer
 * Add optional long-poll `timeout` to `reserve_batch` (Tuber only): `tubes.reserve_batch(count, timeout)` blocks up to `timeout` seconds for the first job, then drains what's ready
 * Add `connect_timeout` (Ruby 3+), `resolv_timeout` (Ruby 3+), `read_timeout`, and `write_timeout` configuration options (@rveznaver)
 * Fix fractional timeout handling for `read_timeout` and `write_timeout` socket options
+* Add `TUBER_URL` environment variable and `config.tuber_url` as the primary way to point at a server; `BEANSTALKD_URL` and `config.beanstalkd_url` remain as compatible fallbacks/aliases
+* Tests can target a specific server via `TUBER_TEST_ADDRESS`, and Tuber-only tests skip automatically against stock beanstalkd; CI runs the full suite against Tuber and the portable subset against beanstalkd
 * Fix `StatStruct#[]` raising a `SyntaxError` when looking up hyphenated beanstalkd keys (e.g. `stats['current-jobs-ready']`); keys are now underscored before lookup to match how they are stored
 
 ## 1.1.4 (March 6 2026)
@@ -29,7 +35,7 @@ beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for refer
 
 ## 1.1.2 (Oct 10 2022)
 
-* Fixes russet when used with Ruby 3.1 and YAML 4 (@pond)
+* Fixes beaneater when used with Ruby 3.1 and YAML 4 (@pond)
 
 ## 1.1.1 (April 27th 2021)
 
@@ -47,7 +53,7 @@ beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for refer
 
 ## 1.0.0 (April 26th 2015)
 
-* Beginning from version 1.0.0 the support for `Russet::Pool` has been dropped (@alup)
+* Beginning from version 1.0.0 the support for `Beaneater::Pool` has been dropped (@alup)
 * `Jobs#find_all` method has been removed, since it is no longer necessary after removing pool (@alup)
 * `Tubes` is now an enumerable allowing `tubes` to be handled as a collection (@Aethelflaed)
 
@@ -82,7 +88,7 @@ beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for refer
 
 ## 0.2.0 (Nov 12 2012)
 * Fix 1.8.7 compatibility issues
-* Add configuration block to russet and better job parsing
+* Add configuration block to beaneater and better job parsing
 * BREAKING: json jobs now return as string by default not hashes
 
 ## 0.1.2 (Nov 7 2012)
