@@ -39,6 +39,9 @@ class Tuber
     #
     # @see Tuber::Connection#transmit
     def transmit(command, options={})
+      # Empty **options must not be forwarded: on Ruby 2.7 it arrives as an
+      # extra positional {} at the receiver.
+      return client.connection.transmit(command) if options.empty?
       client.connection.transmit(command, **options)
     end
 

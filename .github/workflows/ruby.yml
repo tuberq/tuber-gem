@@ -17,17 +17,19 @@ jobs:
     name: tuber (ruby ${{ matrix.ruby-version }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         ruby-version: ["2.7", "3.0", "3.1", "3.2", "3.3", "3.4"]
 
-    services:
-      tuber:
-        image: ghcr.io/tuberq/tuber:latest
-        ports:
-          - 11300:11300
-
     steps:
     - uses: actions/checkout@v4
+    # Not a service container: the image's entrypoint needs the `server`
+    # subcommand, and services can't pass a command.
+    - name: Start tuber
+      run: |
+        docker run -d --name tuber -p 11300:11300 ghcr.io/tuberq/tuber:latest server
+        for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/11300) 2>/dev/null && exit 0; sleep 1; done
+        docker logs tuber; exit 1
     - name: Set up Ruby
       uses: ruby/setup-ruby@v1
       with:
@@ -42,6 +44,7 @@ jobs:
     name: beanstalkd compat (ruby ${{ matrix.ruby-version }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         ruby-version: ["2.7", "3.4"]
 
