@@ -270,6 +270,10 @@ job = @tuber.tubes.reserve  # batch-jobs selected 6x as often as email
 
 Tubes default to weight 1. Switch back with `reserve_mode(:fifo)`.
 
+Weights and reserve mode are per-connection server state. The client remembers
+both and replays them if the connection has to be re-established, so a worker
+that heals across a server blip keeps reserving by weight.
+
 ### Batch Reserve (Tuber only)
 
 Reserve multiple jobs atomically in a single call:

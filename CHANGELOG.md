@@ -4,6 +4,12 @@ The tuber gem is a fork of [beaneater](https://github.com/beanstalkd/beaneater),
 beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for reference.
 (0.0.1 was an empty placeholder published to claim the gem name.)
 
+## Unreleased
+
+* Fix a reconnect silently dropping per-tube weights and the connection's reserve mode ([#1](https://github.com/tuberq/tuber-gem/issues/1)). Both are per-connection server state that a fresh socket resets, so a consumer that healed across a brief server restart kept working but quietly fell back to FIFO. `Connection` now remembers the weight each tube was watched with and the mode set by `Tubes#reserve_mode`, and replays them (watch, then `ignore default`, then `reserve-mode`) when re-initialising tubes.
+* Fix `_initialize_tubes` sending `ignore default` after a reconnect even when `default` was one of the watched tubes, which dropped it from the watch list.
+* `Connection#add_to_watched` now takes an optional weight as a second argument, and `Connection#tube_weights` / `Connection#reserve_mode` expose the replayed state.
+
 ## 0.5.1 (August 13 2026)
 
 * Fix empty keyword arguments forwarded through `Tube#transmit`, `Tubes#transmit` and `Jobs#transmit` arriving as an extra positional `{}` on Ruby 2.7

@@ -103,7 +103,11 @@ class Tuber
     #
     # @api public
     def reserve_mode(mode)
-      transmit("reserve-mode #{mode}")
+      res = transmit("reserve-mode #{mode}")
+      # Remembered so a reconnect can replay it: reserve mode is per-connection
+      # server state, and a fresh socket starts back at fifo.
+      client.connection.reserve_mode = mode
+      res
     end
 
     # Reserves a specific job by its ID.
@@ -202,7 +206,7 @@ class Tuber
       names.each do |t|
         cmd = weight ? "watch #{t} #{weight}" : "watch #{t}"
         transmit cmd
-        client.connection.add_to_watched(t)
+        client.connection.add_to_watched(t, weight)
       end
     rescue BadFormatError => ex
       raise InvalidTubeName, "Tube in '#{ex.cmd}' is invalid!"

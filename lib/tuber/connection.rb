@@ -33,7 +33,17 @@ class Tuber
     #   @returns [Array<String>] returns currently watched tube names
     # @!attribute tube_used
     #   @returns [String] returns currently used tube name
-    attr_accessor :tubes_watched, :tube_used
+    # @!attribute reserve_mode
+    #   @returns [String, Symbol, nil] the reserve mode set on this connection,
+    #     nil when it was never set (the server default is fifo)
+    attr_accessor :tube_used, :reserve_mode
+    attr_reader :tubes_watched
+
+    # @!attribute tube_weights
+    #   @returns [Hash{String => Integer}] weight last watched with, per tube.
+    #     Tubes watched without a weight are absent: the server resets a tube's
+    #     weight to 1 on a plain `watch`, so "no weight" is state worth keeping.
+    attr_reader :tube_weights
 
     # Default port value for beanstalk connection
     DEFAULT_PORT = 11300
@@ -66,6 +76,8 @@ class Tuber
       @mutex = Mutex.new
       @tube_used = 'default'
       @tubes_watched = ['default']
+      @tube_weights = {}
+      @reserve_mode = nil
 
       establish_connection
     rescue
@@ -185,13 +197,32 @@ class Tuber
     end
     alias :inspect :to_s
 
-    def add_to_watched(tube_name)
+    # Records a tube as watched, along with the weight it was watched with.
+    #
+    # @param [String] tube_name Name of the tube now being watched
+    # @param [Integer, nil] weight Weight passed to `watch`, nil for a plain watch
+    def add_to_watched(tube_name, weight = nil)
       @tubes_watched << tube_name
-      @tubes_watched.uniq
+      @tubes_watched.uniq!
+      if weight
+        @tube_weights[tube_name] = weight
+      else
+        @tube_weights.delete(tube_name)
+      end
+      @tubes_watched
     end
 
     def remove_from_watched(tube_name)
+      @tube_weights.delete(tube_name)
       @tubes_watched.delete(tube_name)
+    end
+
+    # Replaces the watched tube list, dropping weights for tubes that are no
+    # longer watched.
+    def tubes_watched=(tube_names)
+      @tubes_watched = tube_names
+      @tube_weights.keep_if { |name, _| @tubes_watched.include?(name) }
+      @tubes_watched
     end
 
     protected
@@ -278,16 +309,24 @@ class Tuber
 
     private
 
+    # Replays this connection's tube state onto a freshly established socket.
+    # Weights and reserve mode are per-connection server state that a new socket
+    # resets, so a reconnect that only re-watched the tube names would silently
+    # drop a weighted consumer back to FIFO. Order matters: watch, then drop
+    # default, then set the mode.
     def _initialize_tubes
-      if @tubes_watched != ['default']
+      if @tubes_watched != ['default'] || @tube_weights.any?
         tubes_watched.each do |t|
-          transmit("watch #{t}", init: false)
+          weight = @tube_weights[t]
+          transmit(weight ? "watch #{t} #{weight}" : "watch #{t}", init: false)
         end
 
-        transmit("ignore default", init: false)
+        transmit("ignore default", init: false) unless @tubes_watched.include?('default')
       end
 
       transmit("use #{tube_used}", init: false) if @tube_used != 'default'
+
+      transmit("reserve-mode #{@reserve_mode}", init: false) if @reserve_mode && @reserve_mode.to_s != 'fifo'
     end
 
     # Wrapper method for capturing certain failures and retry the payload block

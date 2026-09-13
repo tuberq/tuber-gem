@@ -228,6 +228,131 @@ describe Tuber::Connection do
       # non-retransmitted command (delete/put) now surfaces as a failure.
       $called = true
     end
+
+    it "replays tube weights and reserve mode after reconnect" do
+      require_tuber!
+      client = Tuber.new(tuber_address)
+      client.tubes.watch("reconn_heavy", weight: 8)
+      client.tubes.watch("reconn_light", weight: 1)
+      client.tubes.ignore("default")
+      client.tubes.reserve_mode(:weighted)
+
+      $replayed = []
+      $eof_pending = true
+      TCPSocket.prepend Module.new {
+        def write(data)
+          $replayed << data.to_s if $replayed
+          super
+        end
+
+        def readline
+          if $eof_pending
+            $eof_pending = false
+            raise EOFError
+          end
+
+          super
+        end
+      }
+
+      client.connection.transmit("list-tubes-watched")
+      sent = $replayed
+
+      assert_includes sent, "watch reconn_heavy 8\r\n"
+      assert_includes sent, "watch reconn_light 1\r\n"
+      assert_includes sent, "reserve-mode weighted\r\n"
+      # Ordering matters: watch, then drop default, then set the mode.
+      assert sent.index("watch reconn_heavy 8\r\n") < sent.index("ignore default\r\n"),
+        "expected the watches to be replayed before 'ignore default'"
+      assert sent.index("ignore default\r\n") < sent.index("reserve-mode weighted\r\n"),
+        "expected 'reserve-mode' to be replayed after the tubes are watched"
+    ensure
+      # Leave the prepended module inert for the rest of the suite.
+      $eof_pending = false
+      $replayed = nil
+      client.close if client
+    end
+
+    it "keeps watching default across a reconnect when default is watched" do
+      client = Tuber.new(tuber_address)
+      client.tubes.watch("reconn_extra")
+
+      $replayed = []
+      $eof_pending = true
+      TCPSocket.prepend Module.new {
+        def write(data)
+          $replayed << data.to_s if $replayed
+          super
+        end
+
+        def readline
+          if $eof_pending
+            $eof_pending = false
+            raise EOFError
+          end
+
+          super
+        end
+      }
+
+      client.connection.transmit("list-tubes-watched")
+      sent = $replayed
+
+      assert_includes sent, "watch reconn_extra\r\n"
+      refute_includes sent, "ignore default\r\n"
+      assert_equal %w[default reconn_extra].sort,
+        client.tubes.watched.map(&:name).sort
+    ensure
+      $eof_pending = false
+      $replayed = nil
+      client.close if client
+    end
+
+    it "still reserves by weight after a reconnect" do
+      require_tuber!
+      consumer = Tuber.new(tuber_address)
+      consumer.tubes.watch("reconn_heavy", weight: 8)
+      consumer.tubes.watch("reconn_light", weight: 1)
+      consumer.tubes.ignore("default")
+      consumer.tubes.reserve_mode(:weighted)
+
+      producer = Tuber.new(tuber_address)
+      100.times do |i|
+        producer.tubes["reconn_heavy"].put("h#{i}")
+        producer.tubes["reconn_light"].put("l#{i}")
+      end
+
+      $eof_pending = true
+      TCPSocket.prepend Module.new {
+        def readline
+          if $eof_pending
+            $eof_pending = false
+            raise EOFError
+          end
+
+          super
+        end
+      }
+
+      counts = Hash.new(0)
+      60.times do
+        job = consumer.tubes.reserve(2)
+        counts[job.body[0]] += 1
+        job.delete
+      end
+
+      # 8:1 over interleaved puts is ~53/7; FIFO would be ~30/30.
+      assert counts["h"] > 3 * counts["l"],
+        "expected weighted reserve after reconnect, got heavy=#{counts["h"]} light=#{counts["l"]}"
+    ensure
+      $eof_pending = false
+      if producer
+        producer.connection.transmit("flush-tube reconn_heavy") rescue nil
+        producer.connection.transmit("flush-tube reconn_light") rescue nil
+        producer.close
+      end
+      consumer.close if consumer
+    end
   end # transmit
 
   describe 'for idempotent insert response' do

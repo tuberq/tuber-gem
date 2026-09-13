@@ -128,13 +128,13 @@ describe Tuber::Tubes do
 
     it 'should send watch command with weight' do
       @connection.expects(:transmit).with("watch foo 4").returns({status: "WATCHING", id: "2"})
-      @connection.expects(:add_to_watched).with("foo")
+      @connection.expects(:add_to_watched).with("foo", 4)
       @tubes.watch('foo', weight: 4)
     end
 
     it 'should send watch command without weight by default' do
       @connection.expects(:transmit).with("watch foo").returns({status: "WATCHING", id: "2"})
-      @connection.expects(:add_to_watched).with("foo")
+      @connection.expects(:add_to_watched).with("foo", nil)
       @tubes.watch('foo')
     end
   end # watch with weight
@@ -149,12 +149,25 @@ describe Tuber::Tubes do
 
     it 'should send reserve-mode weighted command' do
       @connection.expects(:transmit).with("reserve-mode weighted").returns({status: "USING", id: "weighted"})
+      @connection.expects(:reserve_mode=).with(:weighted)
       @tubes.reserve_mode(:weighted)
     end
 
     it 'should send reserve-mode fifo command' do
       @connection.expects(:transmit).with("reserve-mode fifo").returns({status: "USING", id: "fifo"})
+      @connection.expects(:reserve_mode=).with(:fifo)
       @tubes.reserve_mode(:fifo)
+    end
+
+    it 'should record the mode on the connection so a reconnect can replay it' do
+      require_tuber!
+      client = Tuber.new(tuber_address)
+      begin
+        client.tubes.reserve_mode(:weighted)
+        assert_equal :weighted, client.connection.reserve_mode
+      ensure
+        client.close
+      end
     end
   end # reserve_mode
 
