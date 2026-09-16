@@ -376,6 +376,217 @@ describe Tuber::Connection do
     end
   end # idempotent insert response
 
+  describe 'for #reconnect!' do
+    before do
+      @host = tuber_address
+      @bc = Tuber::Connection.new(@host)
+    end
+
+    after do
+      @bc.close rescue nil
+    end
+
+    it "re-establishes a connection that was closed" do
+      @bc.close
+      assert_nil @bc.connection
+
+      @bc.reconnect!
+
+      assert_kind_of TCPSocket, @bc.connection
+      assert_equal 'OK', @bc.transmit('stats')[:status]
+    end
+
+    it "replays watched tubes, weights and reserve mode" do
+      require_tuber!
+      client = Tuber.new(tuber_address)
+      client.tubes.watch("reconn_bang_heavy", weight: 8)
+      client.tubes.watch("reconn_bang_light", weight: 1)
+      client.tubes.ignore("default")
+      client.tubes.reserve_mode(:weighted)
+
+      $replayed = []
+      TCPSocket.prepend Module.new {
+        def write(data)
+          $replayed << data.to_s if $replayed
+          super
+        end
+      }
+
+      client.connection.reconnect!
+      sent = $replayed
+
+      assert_includes sent, "watch reconn_bang_heavy 8\r\n"
+      assert_includes sent, "watch reconn_bang_light 1\r\n"
+      assert_includes sent, "ignore default\r\n"
+      assert_includes sent, "reserve-mode weighted\r\n"
+      assert_equal %w[reconn_bang_heavy reconn_bang_light].sort,
+        client.tubes.watched.map(&:name).sort
+    ensure
+      # Leave the prepended module inert for the rest of the suite.
+      $replayed = nil
+      client.close if client
+    end
+
+    it "retries while the server is still refusing connections" do
+      # The outage shape: the socket is gone and the server will not accept
+      # for another second or two. A single connect attempt loses that race.
+      @bc.close
+      real_socket = TCPSocket.new(tuber_address, 11300)
+      TCPSocket.stubs(:new).
+        raises(Errno::ECONNREFUSED.new).then.
+        raises(Errno::ECONNREFUSED.new).then.
+        returns(real_socket)
+
+      @bc.reconnect!(retry_interval: 0.01)
+
+      assert_same real_socket, @bc.connection
+    end
+
+    it "retries a connect that fails for a reason other than ECONNREFUSED" do
+      # A remote host mid-restart answers EHOSTUNREACH or ETIMEDOUT as readily
+      # as ECONNREFUSED; those must not escape as a raw Errno either.
+      @bc.close
+      real_socket = TCPSocket.new(tuber_address, 11300)
+      TCPSocket.stubs(:new).
+        raises(Errno::EHOSTUNREACH.new).then.
+        returns(real_socket)
+
+      @bc.reconnect!(retry_interval: 0.01)
+
+      assert_same real_socket, @bc.connection
+    end
+
+    it "raises NotConnected naming the underlying error when the server stays down" do
+      @bc.close
+      TCPSocket.stubs(:new).raises(Errno::ECONNREFUSED.new)
+
+      err = assert_raises(Tuber::NotConnected) { @bc.reconnect!(retry_interval: 0.01) }
+      assert_match(/ECONNREFUSED/, err.message)
+      assert_kind_of Errno::ECONNREFUSED, err.cause
+    end
+
+    it "is reachable from the Tuber instance" do
+      client = Tuber.new(tuber_address)
+      client.tubes.watch("reconn_delegate")
+
+      client.reconnect!
+
+      assert_includes client.tubes.watched.map(&:name), "reconn_delegate"
+    ensure
+      client.close if client
+    end
+  end # reconnect!
+
+  describe 'for connect retries' do
+    after do
+      Tuber.configure do |config|
+        config.connect_retries        = 0
+        config.connect_retry_interval = Tuber::Connection::DEFAULT_RETRY_INTERVAL
+      end
+    end
+
+    it "should make a single connect attempt by default" do
+      TCPSocket.expects(:new).times(1).raises(Errno::ECONNREFUSED.new)
+
+      assert_raises(Tuber::NotConnected) { Tuber::Connection.new('localhost') }
+    end
+
+    it "should retry the initial connect when connect_retries is configured" do
+      real_socket = TCPSocket.new(tuber_address, 11300)
+      Tuber.configure do |config|
+        config.connect_retries        = 3
+        config.connect_retry_interval = 0.01
+      end
+
+      TCPSocket.stubs(:new).
+        raises(Errno::ECONNREFUSED.new).then.
+        raises(Errno::ECONNREFUSED.new).then.
+        returns(real_socket)
+
+      bc = Tuber::Connection.new(tuber_address)
+
+      assert_same real_socket, bc.connection
+    end
+
+    it "should give up after connect_retries and name the cause" do
+      Tuber.configure do |config|
+        config.connect_retries        = 2
+        config.connect_retry_interval = 0.01
+      end
+      TCPSocket.expects(:new).times(3).raises(Errno::ECONNREFUSED.new)
+
+      err = assert_raises(Tuber::NotConnected) { Tuber::Connection.new('localhost') }
+      assert_match(/ECONNREFUSED/, err.message)
+      assert_kind_of Errno::ECONNREFUSED, err.cause
+    end
+
+    it "should lift an established connection's reconnect budget too" do
+      # One knob for "how long should a client ride out a server restart":
+      # raising connect_retries has to cover the connection you already hold,
+      # not only a cold start.
+      bc = Tuber::Connection.new(tuber_address)
+      real_socket = TCPSocket.new(tuber_address, 11300)
+
+      Tuber.configure do |config|
+        config.connect_retries        = 5
+        config.connect_retry_interval = 0.01
+      end
+
+      # One dropped read, then four refused connects: past the built-in budget
+      # of MAX_RETRIES, inside the configured one.
+      $eof_pending = true
+      TCPSocket.prepend Module.new {
+        def readline
+          if $eof_pending
+            $eof_pending = false
+            raise EOFError
+          end
+
+          super
+        end
+      }
+      TCPSocket.stubs(:new).
+        raises(Errno::ECONNREFUSED.new).then.
+        raises(Errno::ECONNREFUSED.new).then.
+        raises(Errno::ECONNREFUSED.new).then.
+        raises(Errno::ECONNREFUSED.new).then.
+        returns(real_socket)
+
+      assert_equal 'OK', bc.transmit('stats')[:status]
+      assert_same real_socket, bc.connection
+    ensure
+      $eof_pending = false
+    end
+  end # connect retries
+
+  describe 'for NotConnected messages' do
+    it "should keep the historical message as a prefix" do
+      # Consumers match on this string. The cause is appended, never inserted.
+      TCPSocket.stubs(:new).raises(Errno::ECONNREFUSED.new)
+
+      err = assert_raises(Tuber::NotConnected) { Tuber::Connection.new('localhost:8544') }
+
+      assert err.message.start_with?("Connection to beanstalk 'localhost:8544' is closed!"),
+        "expected the historical message as a prefix, got #{err.message.inspect}"
+    end
+
+    it "should not blame an unrelated in-flight exception" do
+      # Commands are very often issued from inside someone else's rescue block,
+      # where $! is still set. The cause named has to be the one that stopped
+      # this connect, not whatever the caller happened to be handling.
+      bc = Tuber::Connection.new(tuber_address)
+      bc.close
+
+      err = begin
+        raise ArgumentError, "something else entirely"
+      rescue ArgumentError
+        assert_raises(Tuber::NotConnected) { bc.transmit('stats') }
+      end
+
+      assert_equal "Connection to beanstalk '#{bc.host}:#{bc.port}' is closed!", err.message
+    end
+  end # NotConnected messages
+
   describe 'for #close' do
     before do
       @host = 'localhost'

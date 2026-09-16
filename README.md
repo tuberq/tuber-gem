@@ -72,6 +72,8 @@ Tuber.configure do |config|
   # config.resolv_timeout      = nil
   # config.read_timeout        = nil
   # config.write_timeout       = nil
+  # config.connect_retries        = 0
+  # config.connect_retry_interval = 1
 end
 ```
 
@@ -89,6 +91,47 @@ The above options are all defaults, so only include a configuration block if you
 
 @tuber.close
 ```
+
+#### Surviving a server restart
+
+An established connection heals itself: when a command notices the socket has
+died, the connection reconnects, replays its tube state, and re-sends the
+command (except for the non-idempotent verbs — `put`, `delete`, `release`,
+`bury`, `touch`, `kick` — where a blind re-send could duplicate a job or act on
+a reservation that died with the old socket, so the original error is raised
+for the caller to decide).
+
+That healing gets three connect attempts a second apart. A server restart
+typically takes longer, so give the client a budget that outlasts it:
+
+```ruby
+Tuber.configure do |config|
+  config.connect_retries        = 15   # extra attempts, 0 = a single attempt
+  config.connect_retry_interval = 1    # seconds between them
+end
+```
+
+`connect_retries` covers both a cold start (`Tuber.new` while the server is
+down) and reconnects on a client you already hold. It defaults to `0` — a
+single attempt — which is the historical behaviour.
+
+When a command does surface `Tuber::NotConnected`, heal the client you have
+rather than building a new one:
+
+```ruby
+begin
+  job = @tuber.tubes.reserve
+rescue Tuber::NotConnected
+  @tuber.reconnect!   # watched tubes, their weights, the used tube and the
+  retry               # reserve mode all come back with it
+end
+```
+
+A fresh `Tuber.new` starts with no tube state, so a worker that reconnects that
+way has to re-watch and re-weight every tube by hand — and will silently fall
+back to FIFO if it forgets the reserve mode. `reconnect!` replays all of it.
+It takes the same budget as the config, overridable per call:
+`@tuber.reconnect!(tries: 30, retry_interval: 2)`.
 
 ### Tubes
 
@@ -346,6 +389,10 @@ Tuber.configure do |config|
   config.job_parser          = lambda { |body| body }
   config.job_serializer      = lambda { |body| body }
   config.tuber_url           = 'localhost:11300'
+
+  # Connect attempts; see "Surviving a server restart" above.
+  config.connect_retries        = 0
+  config.connect_retry_interval = 1
 end
 ```
 

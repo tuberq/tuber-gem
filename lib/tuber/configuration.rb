@@ -15,6 +15,21 @@ class Tuber
     attr_accessor :read_timeout        # socket read timeout in seconds
     attr_accessor :write_timeout       # socket write timeout in seconds
 
+    # How hard a client tries to connect — "how long should this ride out a
+    # server restart", in one knob.
+    #
+    # An established connection has always retried when it notices a dropped
+    # socket (Tuber::Connection::MAX_RETRIES attempts), but the *initial*
+    # connect got exactly one: a cold start during an outage — a web boot, a
+    # fresh Tuber.new, a daemon rebuilding its client after an error — failed
+    # where a held connection would have healed.
+    #
+    # Defaults to that single attempt, so nothing changes until you raise it.
+    # Raising it covers the initial connect and lifts the reconnect budget of
+    # connections already established along with it.
+    attr_accessor :connect_retries          # extra connect attempts, 0 = one shot
+    attr_accessor :connect_retry_interval   # seconds between connect attempts
+
     def initialize
       @default_put_delay   = 0
       @default_put_pri     = 65536
@@ -26,6 +41,9 @@ class Tuber
       @resolv_timeout      = nil
       @read_timeout        = nil
       @write_timeout       = nil
+      @connect_retries     = 0
+      # Matches Tuber::Connection::DEFAULT_RETRY_INTERVAL, which is not loaded yet.
+      @connect_retry_interval = 1
     end
   end # Configuration
 end # Tuber

@@ -71,6 +71,27 @@ class Tuber
     connection.transmit("undrain")
   end
 
+  # Re-establishes the connection and replays its tube state: watched tubes
+  # with their weights, the used tube, and the reserve mode.
+  #
+  # Use this rather than building a new Tuber when a connection drops — a new
+  # client starts with no tube state and, by default, gets a single connect
+  # attempt, so it loses a race a reconnect would have won.
+  #
+  # @param [Integer, nil] tries Maximum number of connect attempts, nil for the
+  #   configured default (see Tuber::Configuration#connect_retries)
+  # @param [Numeric, nil] retry_interval Seconds between attempts, nil for the
+  #   configured default
+  # @return [Tuber] self
+  # @raise [Tuber::NotConnected] Every connect attempt failed
+  # @example
+  #  @tuber_instance.reconnect!
+  #
+  def reconnect!(tries: nil, retry_interval: nil)
+    connection.reconnect!(tries: tries, retry_interval: retry_interval)
+    self
+  end
+
   # Closes the related connection
   #
   # @example

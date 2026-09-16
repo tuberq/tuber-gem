@@ -59,6 +59,25 @@ class Tuber
     # keeps the transparent retry.
     NON_IDEMPOTENT_COMMANDS = %w[put delete delete-batch release bury touch touch-all kick kick-job].freeze
 
+    # Errno names that mean "the server is not reachable right now" during a
+    # connect attempt. Every one of them is worth another try: a host coming
+    # back from a restart answers EHOSTUNREACH or ETIMEDOUT as readily as
+    # ECONNREFUSED, and a raw Errno escaping the connection is a class no
+    # consumer thinks to rescue.
+    CONNECT_ERROR_NAMES = %w[
+      ECONNREFUSED ECONNRESET ECONNABORTED ETIMEDOUT
+      EHOSTUNREACH EHOSTDOWN ENETUNREACH ENETDOWN EPIPE
+    ].freeze
+
+    # The resolved exception classes, skipping any Errno the platform lacks.
+    # SocketError covers a name that will not resolve (a DNS server restarting
+    # alongside the queue), IO::TimeoutError a connect_timeout on Ruby >= 3.2.
+    CONNECT_ERRORS = (
+      CONNECT_ERROR_NAMES.map { |name| Errno.const_get(name) if Errno.const_defined?(name) }.compact +
+      [SocketError] +
+      (defined?(IO::TimeoutError) ? [IO::TimeoutError] : [])
+    ).freeze
+
     # Initializes new connection.
     #
     # @param [String] address beanstalkd instance address.
@@ -71,6 +90,9 @@ class Tuber
     #   @b.connection.host # => '127.0.0.1'
     #   @b.connection.port # => '11300'
     #
+    # @raise [Tuber::NotConnected] Could not connect. The underlying error is
+    #   named in the message and kept as the exception's +cause+.
+    #
     def initialize(address)
       @address = address || _host_from_env || Tuber.configuration.tuber_url
       @mutex = Mutex.new
@@ -79,9 +101,12 @@ class Tuber
       @tube_weights = {}
       @reserve_mode = nil
 
-      establish_connection
-    rescue
-      _raise_not_connected!
+      _connect(tries: config.connect_retries.to_i + 1,
+               retry_interval: config.connect_retry_interval)
+    rescue Tuber::NotConnected
+      raise # already carries its cause; do not wrap it twice
+    rescue => ex
+      _raise_not_connected!(ex)
     end
 
     # Send commands to beanstalkd server via connection.
@@ -182,9 +207,48 @@ class Tuber
     #
     def close
       if @connection
-        @connection.close
+        begin
+          @connection.close
+        rescue StandardError
+          # A socket whose peer has already vanished can fail to close
+          # cleanly. It is gone either way, and #reconnect! must not raise
+          # on the way to replacing it.
+        end
         @connection = nil
       end
+    end
+
+    # Re-establishes this connection and replays its tube state onto the new
+    # socket: watched tubes with the weights they were watched with, the used
+    # tube, and the reserve mode. Safe to call whether the current socket is
+    # healthy, dropped, or already closed.
+    #
+    # This is the same healing the connection performs internally when a
+    # command notices the socket has died, exposed for consumers that hold a
+    # connection across an outage. Prefer it to building a new Tuber: a fresh
+    # Connection makes a single connect attempt by default (see
+    # Tuber::Configuration#connect_retries) and starts with no tube state, so
+    # the caller has to re-watch and re-weight everything by hand.
+    #
+    # @param [Integer, nil] tries Maximum number of connect attempts, nil for
+    #   the configured default (see Tuber::Configuration#connect_retries)
+    # @param [Numeric, nil] retry_interval Seconds to wait between attempts,
+    #   nil for the configured default
+    # @return [Tuber::Connection] self
+    # @raise [Tuber::NotConnected] Every connect attempt failed
+    # @example
+    #   begin
+    #     job = @conn.transmit("reserve")
+    #   rescue Tuber::NotConnected
+    #     @conn.reconnect!   # watches, weights and reserve mode come back with it
+    #     retry
+    #   end
+    #
+    def reconnect!(tries: nil, retry_interval: nil)
+      _reconnect(tries: tries || _connect_tries,
+                 retry_interval: retry_interval || config.connect_retry_interval)
+      _initialize_tubes
+      self
     end
 
     # Returns string representation of job.
@@ -343,7 +407,7 @@ class Tuber
       yield
     rescue EOFError, Errno::ECONNRESET, Errno::EPIPE,
       Errno::ECONNREFUSED => ex
-      _reconnect(ex, retry_interval)
+      _reconnect(tries: _connect_tries, retry_interval: retry_interval)
       _initialize_tubes if init
       raise ex unless retransmit
       retry
@@ -357,19 +421,37 @@ class Tuber
       retry
     end
 
-    # Tries to re-establish connection to the beanstalkd
+    # Connect attempts to allow when healing a connection that was already
+    # established. Never fewer than MAX_RETRIES, so the transparent retry
+    # behaves exactly as it always has by default; raising connect_retries
+    # lifts this with it, making one knob answer "how long should a client
+    # ride out a server restart" for cold starts and reconnects alike.
     #
-    # @param [Exception] original_exception The exception caused the retry
-    # @param [Integer] retry_interval The time to wait before the next reconnect
+    # @return [Integer] maximum number of connect attempts
+    def _connect_tries
+      [MAX_RETRIES, config.connect_retries.to_i + 1].max
+    end
+
+    # Drops the current socket and connects again.
+    #
     # @param [Integer] tries The maximum number of attempts to reconnect
-    def _reconnect(original_exception, retry_interval, tries=MAX_RETRIES)
+    # @param [Numeric] retry_interval The time to wait before the next attempt
+    # @raise [Tuber::NotConnected] Every attempt failed
+    def _reconnect(tries: MAX_RETRIES, retry_interval: DEFAULT_RETRY_INTERVAL)
       close
+      _connect(tries: tries, retry_interval: retry_interval)
+    end
+
+    # Connects, retrying while the server is refusing or unreachable.
+    #
+    # @param [Integer] tries The maximum number of connect attempts
+    # @param [Numeric] retry_interval The time to wait between attempts
+    # @raise [Tuber::NotConnected] Every attempt failed
+    def _connect(tries: MAX_RETRIES, retry_interval: DEFAULT_RETRY_INTERVAL)
       establish_connection
-    rescue Errno::ECONNREFUSED
+    rescue *CONNECT_ERRORS => ex
       tries -= 1
-      if tries.zero?
-        _raise_not_connected!
-      end
+      _raise_not_connected!(ex) if tries <= 0
       sleep(retry_interval || DEFAULT_RETRY_INTERVAL)
       retry
     end
@@ -395,10 +477,23 @@ class Tuber
       [sec, usec].pack('l_l_')
     end
 
-    # Raises an error to be triggered when the connection has failed
+    # Raises an error to be triggered when the connection has failed.
+    #
+    # The underlying error is named in the message as well as kept as the
+    # exception's +cause+. A log line reading only "Connection to beanstalk
+    # '...' is closed!" hides whether the server refused, timed out, or never
+    # resolved — which is exactly what you want to know during an outage.
+    #
+    # Only the two callers that are genuinely inside a rescue pass a cause.
+    # Defaulting to +$!+ would be wrong: a command issued from inside someone
+    # else's rescue block would name whatever they were handling.
+    #
+    # @param [Exception, nil] cause The error that stopped the connect
     # @raise [Tuber::NotConnected] Beanstalkd is no longer connected
-    def _raise_not_connected!
-      raise Tuber::NotConnected, "Connection to beanstalk '#{@host}:#{@port}' is closed!"
+    def _raise_not_connected!(cause = nil)
+      message = "Connection to beanstalk '#{@host}:#{@port}' is closed!"
+      message += " (#{cause.class}: #{cause.message})" if cause && !cause.is_a?(Tuber::NotConnected)
+      raise Tuber::NotConnected, message
     end
 
   end # Connection
