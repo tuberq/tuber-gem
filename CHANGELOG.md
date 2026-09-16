@@ -4,7 +4,18 @@ The tuber gem is a fork of [beaneater](https://github.com/beanstalkd/beaneater),
 beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for reference.
 (0.0.1 was an empty placeholder published to claim the gem name.)
 
-## Unreleased
+## 0.6.0 (September 16 2026)
+
+Reconnection release. The gem retried reconnects but not connects, so a
+consumer that caught `Tuber::NotConnected` and built a new client — the obvious
+thing to write — never reached the retrying path, and a server restart of a few
+seconds was enough to kill it. `reconnect!` makes the existing healing
+reachable, and `connect_retries` gives a cold start a window wider than the
+outage. Existing behaviour is unchanged until `connect_retries` is raised, with
+two exceptions noted below: `NotConnected` messages gained a suffix (the
+historical text remains a strict prefix), and a connect error other than
+`ECONNREFUSED` is now retried and surfaced as `NotConnected` rather than
+escaping as a raw `Errno`.
 
 * Add `Tuber#reconnect!` / `Connection#reconnect!`: re-establishes the connection and replays its tube state (watched tubes with their weights, the used tube, the reserve mode). This healing only ever ran when the connection itself noticed a dropped socket, so a consumer that caught `Tuber::NotConnected` had no way to reach it and had to build a new client — which starts with no tube state and has to re-watch and re-weight every tube by hand.
 * Add `connect_retries` and `connect_retry_interval` configuration. The initial connect took exactly one attempt with no retry, so a cold start during a server restart — a web boot, a fresh `Tuber.new`, a daemon rebuilding its client after an error — failed where an established connection would have healed. Defaults to the historical single attempt; raising it also lifts the reconnect budget of connections already established, so one knob covers both.

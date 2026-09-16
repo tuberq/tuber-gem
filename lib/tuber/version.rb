@@ -2,5 +2,5 @@
 
 class Tuber
   # Current version of gem.
-  VERSION = "0.5.1"
+  VERSION = "0.6.0"
 end

@@ -1,1 +1,0 @@
-- Remove connection from pool if it's not responding and be able to add more connections and reattempt later
