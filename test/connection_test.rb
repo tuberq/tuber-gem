@@ -624,4 +624,24 @@ describe Tuber::Connection do
       assert_raises(Tuber::DrainingError) { @bc.transmit("put 0 0 100 4\r\ntest") }
     end
   end # drain and undrain
+
+  describe 'for a put refused with OUT_OF_STORAGE' do
+    # Tuber answers OUT_OF_STORAGE once a persistent server's disk budget
+    # (--max-storage-bytes) is spent. It must raise like OUT_OF_MEMORY does,
+    # not come back as a hash a caller would read as a successful put.
+    it "should raise" do
+      @bc = Tuber::Connection.new('localhost')
+      TCPSocket.any_instance.stubs(:write)
+      TCPSocket.any_instance.expects(:readline).returns("OUT_OF_STORAGE\r\n")
+      err = begin
+        @bc.transmit("put 0 0 100 4\r\ntest")
+        nil
+      rescue Tuber::UnexpectedResponse => e
+        e
+      end
+      refute_nil err, "OUT_OF_STORAGE came back as a result instead of raising"
+      assert_equal 'OUT_OF_STORAGE', err.status
+      assert_equal 'OutOfStorageError', err.class.name.split('::').last
+    end
+  end # OUT_OF_STORAGE
 end # Tuber::Connection

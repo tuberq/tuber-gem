@@ -11,7 +11,7 @@ class Tuber
   # Abstract class for errors that occur when a command does not complete successfully.
   class UnexpectedResponse < RuntimeError
     # Set of status states that are considered errors
-    ERROR_STATES = %w(OUT_OF_MEMORY INTERNAL_ERROR
+    ERROR_STATES = %w(OUT_OF_MEMORY OUT_OF_STORAGE INTERNAL_ERROR
       BAD_FORMAT UNKNOWN_COMMAND JOB_TOO_BIG DRAINING
       TIMED_OUT DEADLINE_SOON NOT_FOUND NOT_IGNORED EXPECTED_CRLF)
 
@@ -55,6 +55,8 @@ class Tuber
 
   # Raises when the beanstalkd instance runs out of memory
   class OutOfMemoryError < UnexpectedResponse; end
+  # Raises when a persistent Tuber server's disk budget (--max-storage-bytes) is spent
+  class OutOfStorageError < UnexpectedResponse; end
   # Raises when the beanstalkd instance is draining and new jobs cannot be inserted
   class DrainingError < UnexpectedResponse; end
   # Raises when the job or tube cannot be found

@@ -413,6 +413,7 @@ end
 | Tuber::NotFoundError      | Job or tube not found. |
 | Tuber::TimedOutError      | Reserve timed out. |
 | Tuber::JobNotReserved     | Action requires a reserved job. |
+| Tuber::OutOfStorageError  | A persistent Tuber's disk budget (`--max-storage-bytes`) is spent. |
 
 See the [Tuber protocol](https://github.com/tuberq/tuber/blob/main/docs/protocol.md) (a superset of the [beanstalk protocol](https://github.com/beanstalkd/beanstalkd/blob/master/doc/protocol.txt)) for additional error types.
 

@@ -4,6 +4,10 @@ The tuber gem is a fork of [beaneater](https://github.com/beanstalkd/beaneater),
 beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for reference.
 (0.0.1 was an empty placeholder published to claim the gem name.)
 
+## Unreleased
+
+* Fix a put refused with `OUT_OF_STORAGE` coming back as a result hash, as though it had succeeded. Tuber sends that reply once a persistent server's `--max-storage-bytes` budget is spent. It now raises the new `Tuber::OutOfStorageError`, as `OUT_OF_MEMORY` raises `OutOfMemoryError`.
+
 ## 0.6.0 (September 16 2026)
 
 Reconnection release. The gem retried reconnects but not connects, so a

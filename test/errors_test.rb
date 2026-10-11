@@ -32,4 +32,11 @@ describe "Tuber::Errors" do
     assert_equal 'reserve 0', @klazz.cmd
     assert_equal 'EXPECTED_CRLF', @klazz.status
   end
+
+  it 'should raise proper exception for invalid status OUT_OF_STORAGE' do
+    @klazz = Tuber::UnexpectedResponse.from_status("OUT_OF_STORAGE", "put 0 0 120 4")
+    assert_kind_of(Tuber::UnexpectedResponse, @klazz)
+    assert_equal 'OutOfStorageError', @klazz.class.name.split('::').last
+    assert_equal 'OUT_OF_STORAGE', @klazz.status
+  end
 end
