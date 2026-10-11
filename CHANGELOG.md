@@ -4,7 +4,7 @@ The tuber gem is a fork of [beaneater](https://github.com/beanstalkd/beaneater),
 beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for reference.
 (0.0.1 was an empty placeholder published to claim the gem name.)
 
-## Unreleased
+## 0.7.0 (October 11 2026)
 
 Recurring schedules. A Tuber with the scheduler runs an app's recurring jobs
 itself, so the app can drop its scheduler process. This release adds the client
