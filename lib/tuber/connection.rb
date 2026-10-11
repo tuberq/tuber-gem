@@ -200,6 +200,81 @@ class Tuber
       end
     end
 
+    # Sends a command answered with `OK <bytes>` and returns the body
+    # unparsed. For replies whose values #parse_response would mangle:
+    # its Psych workaround rewrites `:`, `-` and `~` inside every value, and
+    # stats-schedule's times, specs and tags are full of them.
+    #
+    # @param [String] command A command whose success reply is `OK <bytes>`
+    # @return [String] The reply body (the YAML document), without its CRLF
+    # @raise [Tuber::UnexpectedResponse] Any other reply, e.g. NotFoundError
+    #
+    def transmit_raw(command)
+      _with_retry do
+        @mutex.synchronize do
+          _raise_not_connected! unless connection
+
+          connection.write(command + "\r\n")
+          status, bytes = connection.readline.chomp.split(/\s/, 2)
+          raise UnexpectedResponse.from_status(status, command) unless status == 'OK'
+
+          body = connection.read(bytes.to_i)
+          crlf = connection.read(2)
+          raise ExpectedCrlfError.new('EXPECTED_CRLF', command) unless crlf == "\r\n"
+          body.force_encoding(Encoding::UTF_8)
+        end
+      end
+    end
+
+    # Replaces +owner+'s recurring schedule with +entries+ in one exchange:
+    # schedule-begin, a schedule-put per entry, schedule-commit. The mutex is
+    # held throughout, so no other command interleaves with it on the socket.
+    #
+    # A dropped socket makes the server discard what was staged, so the whole
+    # exchange is re-run on a fresh connection — never resumed partway. That
+    # is safe because a sync is idempotent; if the drop came after the commit
+    # landed, the re-run reports every entry as unchanged.
+    #
+    # Run it on a connection of its own, and close that afterwards, as
+    # Tuber::Schedules#sync does: any other error partway can leave the server
+    # mid-sync on this socket with a reply unread.
+    #
+    # @param [String] owner The owner whose entries are replaced
+    # @param [Array<Tuber::Schedules::Entry>] entries The complete new set
+    # @return [Tuber::Schedules::SyncResult]
+    # @raise [Tuber::ScheduleSyncError] The server refused the sync
+    # @api private Use Tuber::Schedules#sync, which validates the entries
+    #
+    def schedule_sync(owner, entries)
+      _with_retry do
+        @mutex.synchronize do
+          _raise_not_connected! unless connection
+
+          cmd = "schedule-begin #{owner}"
+          reply = _round_trip(cmd)
+          raise ScheduleSyncError.new(reply[/\A\S*/], cmd, owner: owner) unless reply == "SYNCING #{owner}"
+
+          entries.each do |entry|
+            cmd = "schedule-put #{entry.line}"
+            reply = _round_trip(cmd, entry.body)
+            next if reply == 'STAGED'
+
+            # The refusal has already doomed the sync; the commit would only
+            # say ABORTED. Abort now so the error names the entry, and so the
+            # connection leaves sync mode before the caller sees it.
+            _round_trip('schedule-abort')
+            raise ScheduleSyncError.new(reply, cmd, owner: owner, entry: entry.name)
+          end
+
+          status, *counts = _round_trip('schedule-commit').split(' ')
+          unless status == 'SYNCED' && counts.size == 4
+            raise ScheduleSyncError.new(status.to_s, 'schedule-commit', owner: owner)
+          end
+          Schedules::SyncResult.new(*counts.map(&:to_i))
+        end
+      end
+    end
+
     # Close connection with beanstalkd server.
     #
     # @example
@@ -391,6 +466,17 @@ class Tuber
       transmit("use #{tube_used}", init: false) if @tube_used != 'default'
 
       transmit("reserve-mode #{@reserve_mode}", init: false) if @reserve_mode && @reserve_mode.to_s != 'fifo'
+    end
+
+    # Writes one command, and a body framed as for put when given, and reads
+    # the one-line reply. Callers hold the mutex.
+    #
+    # @return [String] The reply line without its CRLF
+    def _round_trip(command, body = nil)
+      frame = "#{command}\r\n".b
+      frame << body.b << "\r\n" if body
+      connection.write(frame)
+      connection.readline.chomp
     end
 
     # Wrapper method for capturing certain failures and retry the payload block

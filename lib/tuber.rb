@@ -2,7 +2,7 @@
 
 require 'thread' unless defined?(Mutex)
 
-%w(version configuration errors connection tube job stats).each do |f|
+%w(version configuration errors connection tube job stats schedules).each do |f|
   require "tuber/#{f}"
 end
 
@@ -49,6 +49,15 @@ class Tuber
   # @api public
   def stats
     @stats ||= Stats.new(self)
+  end
+
+  # Returns Tuber::Schedules object for the server's recurring schedules
+  # (Tuber only).
+  #
+  # @return [Tuber::Schedules] schedules object
+  # @api public
+  def schedules
+    @schedules ||= Schedules.new(self)
   end
 
   # Puts the server into drain mode, rejecting new puts.

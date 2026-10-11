@@ -62,19 +62,30 @@ class Tuber
 
         cmd_options = "#{options[:pri]} #{options[:delay]} #{options[:ttr]} #{serialized_body.bytesize}"
 
-        tags = []
-        if options[:idp]
-          tags << (options[:idp].is_a?(Array) ? "idp:#{options[:idp].join(':')}" : "idp:#{options[:idp]}")
-        end
-        if options[:con]
-          tags << (options[:con].is_a?(Array) ? "con:#{options[:con].join(':')}" : "con:#{options[:con]}")
-        end
-        tags << "grp:#{options[:grp]}" if options[:grp]
-        tags << "aft:#{options[:aft]}" if options[:aft]
-
+        tags = Tube.tags(options)
         cmd_options = "#{cmd_options} #{tags.join(' ')}" if tags.any?
         transmit("put #{cmd_options}\r\n#{serialized_body}")
       end
+    end
+
+    # The tags a put carries for its :idp, :con, :grp and :aft options.
+    # Tuber::Schedules builds its entries' tags here too: every fire is a put
+    # carrying them.
+    #
+    # @param [Hash] options Put options, as for #put
+    # @return [Array<String>] e.g. ["idp:report:300", "con:api"]
+    # @api private
+    def self.tags(options)
+      tags = []
+      if options[:idp]
+        tags << (options[:idp].is_a?(Array) ? "idp:#{options[:idp].join(':')}" : "idp:#{options[:idp]}")
+      end
+      if options[:con]
+        tags << (options[:con].is_a?(Array) ? "con:#{options[:con].join(':')}" : "con:#{options[:con]}")
+      end
+      tags << "grp:#{options[:grp]}" if options[:grp]
+      tags << "aft:#{options[:aft]}" if options[:aft]
+      tags
     end
 
     # Peek at next job within this tube in given `state`.

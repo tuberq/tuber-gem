@@ -43,6 +43,24 @@ class MiniTest::Unit::TestCase
     skip "requires a Tuber server, not stock beanstalkd" unless tuber_server?
   end
 
+  # Skips the current test unless the server runs recurring schedules. A
+  # Tuber older than the scheduler answers UNKNOWN_COMMAND to list-schedules.
+  def require_schedules!
+    require_tuber!
+    if $tuber_schedules.nil?
+      client = Tuber.new(tuber_address)
+      begin
+        client.connection.transmit_raw('list-schedules')
+        $tuber_schedules = true
+      rescue Tuber::UnknownCommandError
+        $tuber_schedules = false
+      ensure
+        client.close
+      end
+    end
+    skip "requires a Tuber server with recurring schedules" unless $tuber_schedules
+  end
+
   # Cleans up all jobs from specific tubes
   #
   # @example

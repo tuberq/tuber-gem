@@ -6,7 +6,18 @@ beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for refer
 
 ## Unreleased
 
+Recurring schedules. A Tuber with the scheduler runs an app's recurring jobs
+itself, so the app can drop its scheduler process. This release adds the client
+side. Nothing changes for code that doesn't call it.
+
+* Add `Tuber#schedules`: `sync(owner) { |s| s.add ... }` replaces an owner's whole set of entries in one step, and `list` and `stats` show what the server holds. `s.add` takes `cron:` (with `zone:`), `every:` (with `offset:`) or a raw `spec:`, the put options with their usual defaults and value shapes, and `catchup:`. See "Recurring Schedules" in the README.
+* `sync` refuses an empty set unless given `allow_empty: true`. An empty sync removes every entry the owner has, and an app that loaded an empty config by mistake shouldn't wipe its schedule.
+* `sync` runs on a short-lived connection of its own, closed afterwards. A worker blocked in `reserve` on the client's connection can't hold it up, and an error partway can't leave that connection mid-sync. If the socket drops, the whole sync is re-run from the start, never resumed partway.
+* Add `Tuber::ScheduleSyncError` for a sync tuber refuses. It names the owner, the refused entry (`#entry`) and tuber's reply (`#status`). The gem aborts the sync before raising, so the previous schedule keeps running. `#applied?` is true for the one exception: a commit that took effect but couldn't be written to disk.
+* `schedules.stats` returns a `StatStruct`, like tube and job stats: `stats.next_fire` or `stats["next-fire"]`. Times come back as `Time` in the entry's own zone, counters as Integers, and empty fields as nil.
+* Add `Connection#transmit_raw`, which returns an `OK <bytes>` body unparsed. `transmit`'s YAML handling rewrites `:`, `-` and `~` inside values, and schedule stats are full of them.
 * Fix a put refused with `OUT_OF_STORAGE` coming back as a result hash, as though it had succeeded. Tuber sends that reply once a persistent server's `--max-storage-bytes` budget is spent. It now raises the new `Tuber::OutOfStorageError`, as `OUT_OF_MEMORY` raises `OutOfMemoryError`.
+* `Tuber::UnexpectedResponse.new` takes an optional message as a third argument.
 
 ## 0.6.0 (September 16 2026)
 

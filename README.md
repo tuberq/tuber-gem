@@ -371,6 +371,98 @@ lower than expected means jobs hit their TTR and went back to the queue while th
 worker was busy — otherwise invisible, since nothing notifies a worker that it
 lost a job.
 
+### Recurring Schedules (Tuber only)
+
+Tuber can run an app's recurring jobs itself, so the app needs no scheduler
+process (whenever, rufus-scheduler, sidekiq-cron, a `bin/scheduler` container).
+The app sends its complete schedule under a name of its choosing, the *owner*,
+and tuber puts each entry's body into its tube at the times the entry names. A
+fire is an ordinary put: workers reserve, delete and bury it like any other job.
+
+```ruby
+tuber = Tuber.new
+
+result = tuber.schedules.sync("splat") do |s|
+  s.add "monitor_evaluation", tube: "splat.checkins", every: 60,
+        body: { class: "Monitors::EvaluateJob", args: [] }.to_json,
+        idp: "monitor_evaluation", pri: 1024
+  s.add "histogram_rollup", tube: "splat.maintenance", cron: "5 * * * *",
+        body: { class: "Analytics::HistogramRollupJob", args: [] }.to_json,
+        idp: "histogram_rollup", con: "maintenance", pri: 1024
+  s.add "data_retention", tube: "splat.maintenance",
+        cron: "0 2 * * *", zone: "Australia/Melbourne",
+        body: { class: "Maintenance::RetentionJob", args: [] }.to_json,
+        idp: "data_retention", con: "maintenance", pri: 1024
+end
+result.to_h  # => {added: 3, changed: 0, removed: 0, unchanged: 0}
+```
+
+- **Send the complete set every time.** An entry you leave out is removed. An
+  edited entry keeps its name and is updated in place. An identical sync changes
+  nothing, not even when entries next fire, so every replica may run it.
+- **An empty set is refused** with `ArgumentError`, since it would remove every
+  entry the owner has. Pass `allow_empty: true` when that is what you mean.
+- **Sync when a release starts, not on reconnect.** Use a release step (a Kamal
+  `pre-deploy` hook, a Heroku `release` phase) or sync once at process boot.
+  Tuber keeps schedules across its own restarts (with `-b`), and during a
+  rolling deploy an old process re-syncing after a reconnect would put back
+  entries the new release removed. The gem never syncs on its own.
+- A sync uses a short-lived connection of its own, so a worker blocked in
+  `reserve` on the client's connection doesn't hold it up.
+
+`s.add` takes the entry's name and:
+
+| Option | |
+| --- | --- |
+| `tube:`, `body:` | Required. The body goes through `job_serializer`, as for `put` |
+| `cron:` | 5-field cron or a macro (`"@daily"`); `zone:` adds an IANA zone (default UTC) |
+| `every:` | Seconds, or `"10m"`, `"1h"`, `"1d"`, aligned to the Unix epoch; `offset:` shifts it |
+| `spec:` | The spec as tuber reads it, instead of `cron:` or `every:` |
+| `pri:`, `delay:`, `ttr:` | As for `put`, with the same defaults |
+| `idp:`, `con:`, `grp:`, `aft:` | As for `put`: `idp: "key"` or `["key", ttl]`, `con: "key"` or `["key", limit]` |
+| `catchup:` | For ticks missed while tuber was down: `:once` (default) fires once for the gap, an Integer fires it only if at most that many seconds late, `:never` skips it |
+
+A `con:` value is a key, not a number: every job with `con: "maintenance"`
+shares one slot, so entries that share it run one after another.
+
+Anything tuber would refuse that the gem can see — a bad name, two specs, a body
+that isn't a String — raises `ArgumentError` before anything is sent. When tuber
+refuses the sync, it raises `Tuber::ScheduleSyncError`, and nothing changed: the
+previous schedule keeps running. `#entry` names the refused entry (nil when tuber
+refused the sync as a whole) and `#status` gives tuber's reply, such as
+`BAD_SCHEDULE` for a zone typo like `Australia/Melborne`. The one exception is
+`#applied?`: the commit took effect but tuber couldn't write it to disk
+(`INTERNAL_ERROR`). It runs until tuber restarts, so sync again once the disk is
+fixed.
+
+```ruby
+begin
+  tuber.schedules.sync("splat") { |s| ... }
+rescue Tuber::ScheduleSyncError => e
+  Rails.logger.error(e.message)  # names the entry and the reason
+end
+```
+
+To see what tuber holds:
+
+```ruby
+tuber.schedules.list            # => [["splat", "data_retention"], ...] across owners
+tuber.schedules.list("splat")
+stats = tuber.schedules.stats("splat", "data_retention")  # nil if there's no such entry
+stats.next_fire                 # => 2026-10-12 02:00:00 +1100 (next_fire_2, next_fire_3 too)
+stats.last_result               # => "INSERTED 4711"
+stats.buried_streak             # => 0
+```
+
+**`idp:` and buried jobs.** With `idp:`, a fire is skipped while the previous
+fire's job is still in the tube, which is what you want when a run outlasts its
+interval. But a *buried* job keeps its key too, so every later fire dedups
+against it and queues nothing until it is kicked or deleted. `buried_streak`
+counts those fires: alert when it is above 0.
+
+Tuber's [scheduling guide](https://github.com/tuberq/tuber/blob/main/docs/scheduling.md)
+covers spec syntax, daylight saving, catch-up and monitoring.
+
 ### Stats
 
 ```ruby
@@ -414,6 +506,7 @@ end
 | Tuber::TimedOutError      | Reserve timed out. |
 | Tuber::JobNotReserved     | Action requires a reserved job. |
 | Tuber::OutOfStorageError  | A persistent Tuber's disk budget (`--max-storage-bytes`) is spent. |
+| Tuber::ScheduleSyncError  | Tuber refused a schedule sync; see Recurring Schedules. |
 
 See the [Tuber protocol](https://github.com/tuberq/tuber/blob/main/docs/protocol.md) (a superset of the [beanstalk protocol](https://github.com/beanstalkd/beanstalkd/blob/master/doc/protocol.txt)) for additional error types.
 
