@@ -4,7 +4,11 @@ The tuber gem is a fork of [beaneater](https://github.com/beanstalkd/beaneater),
 beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for reference.
 (0.0.1 was an empty placeholder published to claim the gem name.)
 
-## Unreleased
+## 0.8.0 (November 22 2026)
+
+Surviving a server whose host vanishes. A consumer blocked in `reserve` used to
+wait forever on a connection whose server had gone without closing it, as after
+a host reboot. It now notices in about a minute, reconnects and carries on.
 
 * Turn on TCP keepalive by default, so a consumer blocked in `reserve` notices a server whose host vanished without closing the connection (a reboot that takes the network down first, a power cut, a partition) in about 60 seconds, instead of waiting forever on a half-open socket. Tune it with `keepalive_idle` (30), `keepalive_interval` (10) and `keepalive_count` (3), or turn it off with `keepalive = false`. (#2)
 * Heal the connection after `Errno::ETIMEDOUT` (a failed keepalive) and `IO::TimeoutError` (a read or write timeout), as for a dropped socket: an idempotent command such as `reserve` reconnects and is re-sent, and the caller never sees the error. A timeout is re-sent at most once. A second one on a fresh socket means the server is up but not answering, and is raised.
