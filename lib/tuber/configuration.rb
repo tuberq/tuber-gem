@@ -12,8 +12,30 @@ class Tuber
     alias_method :beanstalkd_url=, :tuber_url=
     attr_accessor :connect_timeout     # TCP connect timeout in seconds
     attr_accessor :resolv_timeout      # DNS resolve timeout in seconds
-    attr_accessor :read_timeout        # socket read timeout in seconds
-    attr_accessor :write_timeout       # socket write timeout in seconds
+
+    # Seconds to wait for a reply before raising IO::TimeoutError, beyond any
+    # wait the command itself asks for: reserve-with-timeout and reserve-batch
+    # get their own timeout added on, and a plain reserve has no deadline at
+    # all. Needs Ruby >= 3.2 (IO#timeout); older Rubies fall back to
+    # SO_RCVTIMEO, which Ruby's non-blocking sockets ignore from 3.0 on.
+    attr_accessor :read_timeout
+
+    # Seconds a write may block (the server not reading) before raising
+    # IO::TimeoutError. Same Ruby caveat as read_timeout.
+    attr_accessor :write_timeout
+
+    # TCP keepalive, on by default. A blocked read waits on the server, so it
+    # never learns the server is gone if the server's host vanished without
+    # closing the connection: a reboot that takes the network down first, a
+    # power cut, a partition. Keepalive probes an idle connection after
+    # keepalive_idle seconds, every keepalive_interval seconds, and gives up
+    # after keepalive_count unanswered probes, so the read fails (and the
+    # connection heals) after about idle + interval * count seconds: 60 with
+    # the defaults.
+    attr_accessor :keepalive
+    attr_accessor :keepalive_idle      # idle seconds before the first probe
+    attr_accessor :keepalive_interval  # seconds between probes
+    attr_accessor :keepalive_count     # unanswered probes before giving up
 
     # How hard a client tries to connect — "how long should this ride out a
     # server restart", in one knob.
@@ -41,6 +63,10 @@ class Tuber
       @resolv_timeout      = nil
       @read_timeout        = nil
       @write_timeout       = nil
+      @keepalive           = true
+      @keepalive_idle      = 30
+      @keepalive_interval  = 10
+      @keepalive_count     = 3
       @connect_retries     = 0
       # Matches Tuber::Connection::DEFAULT_RETRY_INTERVAL, which is not loaded yet.
       @connect_retry_interval = 1

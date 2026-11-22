@@ -78,6 +78,21 @@ class Tuber
       (defined?(IO::TimeoutError) ? [IO::TimeoutError] : [])
     ).freeze
 
+    # What a blocked read or write raises once the server is judged gone
+    # without having said so: Errno::ETIMEDOUT when keepalive probes go
+    # unanswered, IO::TimeoutError (Ruby >= 3.2) when read_timeout or
+    # write_timeout runs out. The socket is useless afterwards either way: a
+    # reply still in flight could arrive later and be read as the answer to
+    # the next command.
+    TIMEOUT_ERRORS = (
+      [Errno::ETIMEDOUT] + (defined?(IO::TimeoutError) ? [IO::TimeoutError] : [])
+    ).freeze
+
+    # Whether this Ruby has IO#timeout (3.2 and newer), the only read and
+    # write timeout its non-blocking sockets honour. SO_RCVTIMEO and
+    # SO_SNDTIMEO are kept for older Rubies but have no effect from 3.0 on.
+    IO_TIMEOUTS = IO.method_defined?(:timeout=)
+
     # Initializes new connection.
     #
     # @param [String] address beanstalkd instance address.
@@ -127,7 +142,7 @@ class Tuber
           _raise_not_connected! unless connection
 
           command = command.dup.force_encoding('ASCII-8BIT') if command.respond_to?(:force_encoding)
-          connection.write(command.to_s + "\r\n")
+          _write(command.to_s + "\r\n", read_timeout: _read_timeout_for(command))
           res = connection.readline
           parse_response(command, res)
         end
@@ -152,7 +167,7 @@ class Tuber
           _raise_not_connected! unless connection
 
           cmd = timeout ? "reserve-batch #{count} #{timeout}" : "reserve-batch #{count}"
-          connection.write(cmd + "\r\n")
+          _write(cmd + "\r\n", read_timeout: _read_timeout_for(cmd))
 
           header = connection.readline.chomp
           status, actual_count_str = header.split(/\s/, 2)
@@ -188,7 +203,7 @@ class Tuber
           _raise_not_connected! unless connection
 
           cmd = "delete-batch #{ids.join(' ')}"
-          connection.write(cmd + "\r\n")
+          _write(cmd + "\r\n")
 
           res = connection.readline.chomp
           status, deleted, not_found = res.split(/\s/)
@@ -214,7 +229,7 @@ class Tuber
         @mutex.synchronize do
           _raise_not_connected! unless connection
 
-          connection.write(command + "\r\n")
+          _write(command + "\r\n")
           status, bytes = connection.readline.chomp.split(/\s/, 2)
           raise UnexpectedResponse.from_status(status, command) unless status == 'OK'
 
@@ -387,8 +402,11 @@ class Tuber
       end
 
       begin
-        socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_RCVTIMEO, _timeval_for(config.read_timeout)) if config.read_timeout
-        socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, _timeval_for(config.write_timeout)) if config.write_timeout
+        _enable_keepalive(socket) if config.keepalive
+        unless IO_TIMEOUTS # IO#timeout is set per exchange instead, in #_write
+          socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_RCVTIMEO, _timeval_for(config.read_timeout)) if config.read_timeout
+          socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, _timeval_for(config.write_timeout)) if config.write_timeout
+        end
         @connection = socket
       rescue
         socket.close rescue nil
@@ -475,7 +493,7 @@ class Tuber
     def _round_trip(command, body = nil)
       frame = "#{command}\r\n".b
       frame << body.b << "\r\n" if body
-      connection.write(frame)
+      _write(frame)
       connection.readline.chomp
     end
 
@@ -489,22 +507,88 @@ class Tuber
     # @param [Integer] tries The maximum number of tries in draining mode
     # @return [Object] Result of the block passed
     #
+    # A timeout (see TIMEOUT_ERRORS) is retransmitted at most once. One fresh
+    # socket heals a connection whose server vanished; a second timeout on it
+    # means the server is up but not answering, and the caller hears so
+    # rather than waiting on a loop that never ends.
+    #
     def _with_retry(retry_interval: DEFAULT_RETRY_INTERVAL, init: true, tries: MAX_RETRIES, retransmit: true, &block)
-      yield
-    rescue EOFError, Errno::ECONNRESET, Errno::EPIPE,
-      Errno::ECONNREFUSED => ex
-      _reconnect(tries: _connect_tries, retry_interval: retry_interval)
-      _initialize_tubes if init
-      raise ex unless retransmit
-      retry
-    rescue Tuber::DrainingError
-      tries -= 1
-      if tries.zero?
-        close
-        raise
+      timed_out = false
+      begin
+        yield
+      rescue EOFError, Errno::ECONNRESET, Errno::EPIPE,
+        Errno::ECONNREFUSED, *TIMEOUT_ERRORS => ex
+        _reconnect(tries: _connect_tries, retry_interval: retry_interval)
+        _initialize_tubes if init
+        raise ex unless retransmit
+        if TIMEOUT_ERRORS.any? { |klass| ex.is_a?(klass) }
+          raise ex if timed_out
+          timed_out = true
+        end
+        retry
+      rescue Tuber::DrainingError
+        tries -= 1
+        if tries.zero?
+          close
+          raise
+        end
+        sleep(retry_interval)
+        retry
       end
-      sleep(retry_interval)
-      retry
+    end
+
+    # Writes a command, and any body framed with it, then sets how long the
+    # reads of its reply may block. Callers hold the mutex.
+    #
+    # On Ruby >= 3.2 both limits are IO#timeout, swapped between the write and
+    # the reads; older Rubies get the SO_*TIMEO set at connect instead.
+    #
+    # @param [String] data The bytes to send
+    # @param [Numeric, nil] read_timeout Seconds each read of the reply may
+    #   block, nil for no limit (see #_read_timeout_for)
+    def _write(data, read_timeout: config.read_timeout)
+      connection.timeout = config.write_timeout if IO_TIMEOUTS
+      connection.write(data)
+      connection.timeout = read_timeout if IO_TIMEOUTS
+    end
+
+    # How long the reply to +command+ may take: read_timeout, plus however
+    # long the command asks the server to hold it before answering. A plain
+    # reserve waits as long as it takes by design, so it has no deadline;
+    # keepalive still notices a server that has vanished under it.
+    #
+    # @param [String] command The command line sent
+    # @return [Numeric, nil] Seconds, or nil for no limit
+    def _read_timeout_for(command)
+      limit = config.read_timeout
+      return limit unless limit
+
+      words = command.to_s[/\A[^\r\n]*/].split
+      case words[0]
+      when 'reserve'              then nil
+      when 'reserve-with-timeout' then limit + words[1].to_i
+      when 'reserve-batch'        then limit + words[2].to_i # count, then timeout
+      else limit
+      end
+    end
+
+    # Turns on TCP keepalive with the configured probe timings, so a read
+    # blocked on a server that vanished without closing the connection fails
+    # with Errno::ETIMEDOUT (or ECONNRESET, if the host is back and refuses
+    # the probe) instead of waiting forever. Each timing is set only where the
+    # platform has the option; macOS calls the idle time TCP_KEEPALIVE.
+    #
+    # @param [TCPSocket] socket A freshly connected socket
+    def _enable_keepalive(socket)
+      socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE, true)
+      {
+        (Socket.const_defined?(:TCP_KEEPIDLE) ? :TCP_KEEPIDLE : :TCP_KEEPALIVE) => config.keepalive_idle,
+        :TCP_KEEPINTVL => config.keepalive_interval,
+        :TCP_KEEPCNT => config.keepalive_count,
+      }.each do |name, value|
+        next unless value && Socket.const_defined?(name)
+        socket.setsockopt(Socket::IPPROTO_TCP, Socket.const_get(name), value.ceil)
+      end
     end
 
     # Connect attempts to allow when healing a connection that was already

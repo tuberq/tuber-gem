@@ -72,6 +72,10 @@ Tuber.configure do |config|
   # config.resolv_timeout      = nil
   # config.read_timeout        = nil
   # config.write_timeout       = nil
+  # config.keepalive           = true
+  # config.keepalive_idle      = 30
+  # config.keepalive_interval  = 10
+  # config.keepalive_count     = 3
   # config.connect_retries        = 0
   # config.connect_retry_interval = 1
 end
@@ -79,7 +83,11 @@ end
 
 The above options are all defaults, so only include a configuration block if you need to make changes.
 
-`connect_timeout` and `resolv_timeout` are passed through to `TCPSocket.new` on Ruby 3.0 and newer (ignored on Ruby < 3.0 for compatibility). `read_timeout` and `write_timeout` apply socket read and write timeouts via `setsockopt`.
+`connect_timeout` and `resolv_timeout` are passed through to `TCPSocket.new` on Ruby 3.0 and newer (ignored on Ruby < 3.0 for compatibility).
+
+`read_timeout` is how long to wait for a reply before raising `IO::TimeoutError`, *beyond* any wait the command asks for: `reserve-with-timeout 30` and `reserve_batch(10, 30)` get their 30 seconds added on, and a plain `reserve` has no client deadline at all. `write_timeout` is how long a write may block on a server that has stopped reading. Both need Ruby 3.2 or newer (`IO#timeout`). On older Rubies they fall back to `SO_RCVTIMEO`/`SO_SNDTIMEO`, which Ruby's non-blocking sockets ignore from 3.0 on.
+
+`keepalive` turns on TCP keepalive (see "Surviving a server restart" below). The `keepalive_*` timings are in seconds, and each is set only where the platform has the option.
 
 ### Connection
 
@@ -114,6 +122,16 @@ end
 `connect_retries` covers both a cold start (`Tuber.new` while the server is
 down) and reconnects on a client you already hold. It defaults to `0` — a
 single attempt — which is the historical behaviour.
+
+A consumer blocked in `reserve` is waiting on the server, so it only notices
+the socket has died if the server's host says so. A clean restart closes the
+connection, but when the host vanishes without a word — a reboot that takes the
+network down before the server, a power cut, a partition — the old connection
+is left half-open. TCP keepalive (on by default) probes an idle connection after
+`keepalive_idle` seconds, every `keepalive_interval` seconds, and gives up after
+`keepalive_count` unanswered probes. The blocked read then fails (about 60
+seconds with the defaults) and the connection heals as above: the `reserve` is
+re-sent on a fresh socket, and the caller never sees the error.
 
 When a command does surface `Tuber::NotConnected`, heal the client you have
 rather than building a new one:
@@ -485,6 +503,13 @@ Tuber.configure do |config|
   # Connect attempts; see "Surviving a server restart" above.
   config.connect_retries        = 0
   config.connect_retry_interval = 1
+
+  # TCP keepalive: notice a server whose host vanished in about
+  # idle + interval * count seconds. See "Surviving a server restart".
+  config.keepalive           = true
+  config.keepalive_idle      = 30
+  config.keepalive_interval  = 10
+  config.keepalive_count     = 3
 end
 ```
 

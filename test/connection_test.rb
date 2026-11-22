@@ -99,7 +99,11 @@ describe Tuber::Connection do
       assert_same real_socket, bc.connection
     end
 
-    it "should set SO_RCVTIMEO and SO_SNDTIMEO when read/write timeouts are configured" do
+    it "should set SO_RCVTIMEO and SO_SNDTIMEO when read/write timeouts are configured on Ruby < 3.2" do
+      # Ruby's sockets are non-blocking from 3.0 on and ignore these; from 3.2
+      # IO#timeout does the job (see 'for read and write timeouts').
+      skip("IO#timeout replaces SO_RCVTIMEO/SO_SNDTIMEO on Ruby >= 3.2") if Tuber::Connection::IO_TIMEOUTS
+
       Tuber.configure do |config|
         config.read_timeout  = 3
         config.write_timeout = 5
@@ -113,6 +117,215 @@ describe Tuber::Connection do
     end
 
   end # timeout configuration
+
+  # Settings changed in these blocks are put back by swapping in a copy of the
+  # configuration and restoring the original afterwards.
+  def swap_in_config_copy!
+    @saved_config = Tuber.configuration
+    Tuber.instance_variable_set(:@_configuration, @saved_config.dup)
+  end
+
+  def restore_config!
+    Tuber.instance_variable_set(:@_configuration, @saved_config) if @saved_config
+  end
+
+  # A server that accepts connections and then never reads or answers: the
+  # client side of a peer that has vanished without a FIN, as far as any one
+  # read or write can tell. Returns its address.
+  def start_silent_server
+    @silent_server = TCPServer.new('127.0.0.1', 0)
+    @silent_peers = []
+    @silent_thread = Thread.new do
+      loop { @silent_peers << @silent_server.accept }
+    rescue IOError
+      # closed by stop_silent_server
+    end
+    "127.0.0.1:#{@silent_server.addr[1]}"
+  end
+
+  def stop_silent_server
+    return unless @silent_server
+    @silent_server.close rescue nil
+    @silent_thread.join(1)
+    @silent_peers.each { |s| s.close rescue nil }
+  end
+
+  # The longest a test lets a call block before calling it a hang. Without the
+  # guard a read the client never gives up on would stall the whole suite.
+  def hang_guard
+    10
+  end
+
+  def int_sockopt(socket, level, name)
+    socket.getsockopt(level, name).int
+  end
+
+  describe 'for TCP keepalive' do
+    before { swap_in_config_copy! }
+
+    after do
+      @bc.close if @bc
+      restore_config!
+    end
+
+    it "enables keepalive by default, so a vanished server is noticed in about a minute" do
+      @bc = Tuber::Connection.new(tuber_address)
+      sock = @bc.connection
+
+      assert sock.getsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE).bool,
+        "expected SO_KEEPALIVE on a fresh connection"
+      if Socket.const_defined?(:TCP_KEEPIDLE)
+        assert_equal 30, int_sockopt(sock, Socket::IPPROTO_TCP, Socket::TCP_KEEPIDLE)
+      end
+      if Socket.const_defined?(:TCP_KEEPINTVL)
+        assert_equal 10, int_sockopt(sock, Socket::IPPROTO_TCP, Socket::TCP_KEEPINTVL)
+      end
+      if Socket.const_defined?(:TCP_KEEPCNT)
+        assert_equal 3, int_sockopt(sock, Socket::IPPROTO_TCP, Socket::TCP_KEEPCNT)
+      end
+    end
+
+    it "uses the configured probe timings" do
+      skip "no TCP_KEEPIDLE on this platform" unless Socket.const_defined?(:TCP_KEEPIDLE)
+      Tuber.configure do |config|
+        config.keepalive_idle     = 7
+        config.keepalive_interval = 2
+        config.keepalive_count    = 5
+      end
+
+      @bc = Tuber::Connection.new(tuber_address)
+      sock = @bc.connection
+
+      assert_equal 7, int_sockopt(sock, Socket::IPPROTO_TCP, Socket::TCP_KEEPIDLE)
+      assert_equal 2, int_sockopt(sock, Socket::IPPROTO_TCP, Socket::TCP_KEEPINTVL)
+      assert_equal 5, int_sockopt(sock, Socket::IPPROTO_TCP, Socket::TCP_KEEPCNT)
+    end
+
+    it "keeps keepalive on the socket a reconnect builds" do
+      @bc = Tuber::Connection.new(tuber_address)
+      @bc.reconnect!
+
+      assert @bc.connection.getsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE).bool
+    end
+
+    it "leaves keepalive off when it is turned off" do
+      Tuber.configure { |config| config.keepalive = false }
+
+      @bc = Tuber::Connection.new(tuber_address)
+
+      refute @bc.connection.getsockopt(Socket::SOL_SOCKET, Socket::SO_KEEPALIVE).bool
+    end
+  end # TCP keepalive
+
+  describe 'for a dead peer noticed mid-command' do
+    # What a blocked read raises once the kernel gives up on the peer:
+    # Errno::ETIMEDOUT from failed keepalive probes, IO::TimeoutError from a
+    # read_timeout. Either way the socket is dead and must be replaced.
+    timeout_errors = [Errno::ETIMEDOUT]
+    timeout_errors << IO::TimeoutError if defined?(IO::TimeoutError)
+
+    before { @bc = Tuber::Connection.new(tuber_address) }
+    after { @bc.close rescue nil }
+
+    timeout_errors.each do |error_class|
+      it "reconnects and retransmits an idempotent command after #{error_class}" do
+        old_socket = @bc.connection
+        TCPSocket.any_instance.expects(:readline).times(2).
+          raises(error_class.new).then.
+          returns("USING foo\n")
+
+        res = @bc.transmit "use foo"
+
+        assert_equal 'USING', res[:status]
+        refute_same old_socket, @bc.connection, "expected a fresh socket after #{error_class}"
+      end
+
+      it "heals the connection but re-raises #{error_class} for a non-idempotent command" do
+        old_socket = @bc.connection
+        TCPSocket.any_instance.expects(:readline).times(1).raises(error_class.new)
+
+        assert_raises(error_class) { @bc.transmit "delete 56" }
+        refute_same old_socket, @bc.connection, "expected a fresh socket after #{error_class}"
+      end
+    end
+  end # dead peer
+
+  describe 'for read and write timeouts' do
+    before do
+      skip "IO#timeout= (and with it working read/write timeouts) needs Ruby >= 3.2" unless IO.method_defined?(:timeout=)
+      swap_in_config_copy!
+    end
+
+    after do
+      @bc&.close
+      stop_silent_server
+      restore_config!
+    end
+
+    it "read_timeout raises against a server that never answers" do
+      address = start_silent_server
+      Tuber.configure { |config| config.read_timeout = 0.3 }
+      @bc = Tuber::Connection.new(address)
+
+      started = Time.now
+      Timeout.timeout(hang_guard) do
+        assert_raises(IO::TimeoutError) { @bc.transmit 'stats' }
+      end
+      # One retransmit on a fresh connection, then give up: about two reads' worth.
+      assert_operator Time.now - started, :<, 3
+    end
+
+    it "write_timeout raises when the server stops reading" do
+      address = start_silent_server
+      Tuber.configure { |config| config.write_timeout = 0.3 }
+      @bc = Tuber::Connection.new(address)
+      body = 'x' * (64 * 1024 * 1024) # far past any socket buffer
+
+      Timeout.timeout(hang_guard) do
+        assert_raises(IO::TimeoutError) { @bc.transmit "put 0 0 100 #{body.bytesize}\r\n#{body}" }
+      end
+    end
+
+    it "lets reserve-with-timeout wait out its own timeout past read_timeout" do
+      Tuber.configure { |config| config.read_timeout = 0.3 }
+      client = Tuber.new(tuber_address)
+      @bc = client.connection
+      client.tubes.watch!("rt_empty_#{Process.pid}")
+
+      Timeout.timeout(hang_guard) do
+        assert_raises(Tuber::TimedOutError) { client.tubes.reserve(1) }
+      end
+    end
+
+    it "lets a plain reserve block past read_timeout until a job arrives" do
+      Tuber.configure { |config| config.read_timeout = 0.3 }
+      tube = "rt_plain_#{Process.pid}"
+      client = Tuber.new(tuber_address)
+      @bc = client.connection
+      client.tubes.watch!(tube)
+      producer = Tuber.new(tuber_address)
+      Thread.new { sleep 1; producer.tubes[tube].put("late") }
+
+      job = Timeout.timeout(hang_guard) { client.tubes.reserve }
+
+      assert_equal "late", job.body
+      job.delete
+    ensure
+      producer.close if producer
+    end
+
+    it "lets reserve_batch long-poll past read_timeout" do
+      require_tuber!
+      Tuber.configure { |config| config.read_timeout = 0.3 }
+      client = Tuber.new(tuber_address)
+      @bc = client.connection
+      client.tubes.watch!("rt_batch_#{Process.pid}")
+
+      jobs = Timeout.timeout(hang_guard) { client.tubes.reserve_batch(5, 1) }
+
+      assert_equal [], jobs
+    end
+  end # read and write timeouts
 
   describe 'for #transmit' do
     before do

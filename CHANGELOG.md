@@ -4,6 +4,12 @@ The tuber gem is a fork of [beaneater](https://github.com/beanstalkd/beaneater),
 beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for reference.
 (0.0.1 was an empty placeholder published to claim the gem name.)
 
+## Unreleased
+
+* Turn on TCP keepalive by default, so a consumer blocked in `reserve` notices a server whose host vanished without closing the connection (a reboot that takes the network down first, a power cut, a partition) in about 60 seconds, instead of waiting forever on a half-open socket. Tune it with `keepalive_idle` (30), `keepalive_interval` (10) and `keepalive_count` (3), or turn it off with `keepalive = false`. (#2)
+* Heal the connection after `Errno::ETIMEDOUT` (a failed keepalive) and `IO::TimeoutError` (a read or write timeout), as for a dropped socket: an idempotent command such as `reserve` reconnects and is re-sent, and the caller never sees the error. A timeout is re-sent at most once. A second one on a fresh socket means the server is up but not answering, and is raised.
+* Fix `read_timeout` and `write_timeout`, which did nothing on Ruby 3.0 and newer: Ruby's sockets are non-blocking from 3.0 on, and ignore `SO_RCVTIMEO`/`SO_SNDTIMEO`. They now use `IO#timeout` on Ruby 3.2 and newer. Older Rubies keep the `setsockopt` fallback. Behaviour change: with `read_timeout` set, a reply that takes longer now raises `IO::TimeoutError` after one re-send. `reserve-with-timeout` and `reserve_batch` with a timeout get their own timeout added to `read_timeout`, and a plain `reserve` has no read deadline.
+
 ## 0.7.0 (October 11 2026)
 
 Recurring schedules. A Tuber with the scheduler runs an app's recurring jobs
