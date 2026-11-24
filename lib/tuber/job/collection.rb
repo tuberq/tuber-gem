@@ -140,8 +140,9 @@ class Tuber
             processor[:block].call(@current_job)
             @current_job.delete
           rescue *processor[:retry_on]
-            if @current_job.stats.releases < processor[:max_retries]
-              @current_job.release(:delay => release_delay)
+            stats = @current_job.stats
+            if stats.releases < processor[:max_retries]
+              @current_job.release(:pri => stats.pri, :delay => release_delay)
             end
           end
         rescue AbortProcessingError
@@ -150,8 +151,10 @@ class Tuber
           retry
         rescue StandardError # handles unspecified errors
           @current_job.bury if @current_job
-        ensure # bury if still reserved
-          @current_job.bury if @current_job && @current_job.exists? && @current_job.reserved?
+        ensure # bury if still reserved; a job settled above needs no asking
+          if @current_job && !@current_job.settled? && @current_job.exists? && @current_job.reserved?
+            @current_job.bury
+          end
           @current_job = nil
         end
       end

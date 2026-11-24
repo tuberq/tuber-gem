@@ -37,6 +37,13 @@ describe Tuber::Job do
       assert_equal "foo bury #{@time}", @tube.peek(:buried).body
     end
 
+    it "should not fetch stats when given a pri" do
+      job = @tube.reserve
+      sent = record_commands
+      job.bury(:pri => 10)
+      assert_equal ["bury #{job.id} 10"], sent
+    end
+
     it "should not bury if not reserved" do
       job = @tube.peek(:ready)
       assert_raises(Tuber::JobNotReserved) { job.bury }
@@ -74,6 +81,20 @@ describe Tuber::Job do
       assert_equal 'delayed', job.stats.state
       assert_equal 10, job.stats.pri
       assert_equal 2, job.stats.delay
+    end
+
+    it "should not fetch stats when given pri and delay" do
+      job = @tube.reserve
+      sent = record_commands
+      job.release :pri => 10, :delay => 0
+      assert_equal ["release #{job.id} 10 0"], sent
+    end
+
+    it "should fetch stats once when given only a delay" do
+      job = @tube.reserve
+      sent = record_commands
+      job.release :delay => 0
+      assert_equal ["stats-job #{job.id}", "release #{job.id} 5 0"], sent
     end
 
     it "should not released if not reserved" do
