@@ -38,9 +38,10 @@ class Tuber
     #
     # @api public
     def bury(options={})
-      options = { :pri => stats.pri }.merge(options)
-      with_reserved("bury #{id} #{options[:pri]}") do
+      pri = options.fetch(:pri) { stats.pri }
+      with_reserved("bury #{id} #{pri}") do
         @reserved = false
+        @settled = true
       end
     end
 
@@ -56,9 +57,14 @@ class Tuber
     #
     # @api public
     def release(options={})
-      options = { :pri => stats.pri, :delay => stats.delay }.merge(options)
+      # The defaults cost a stats-job round trip: one, and only when needed.
+      unless options.key?(:pri) && options.key?(:delay)
+        current = stats
+        options = { :pri => current.pri, :delay => current.delay }.merge(options)
+      end
       with_reserved("release #{id} #{options[:pri]} #{options[:delay]}") do
         @reserved = false
+        @settled = true
       end
     end
 
@@ -83,7 +89,10 @@ class Tuber
     #
     # @api public
     def delete
-      transmit("delete #{id}") { @reserved = false }
+      transmit("delete #{id}") do
+        @reserved = false
+        @settled = true
+      end
     end
 
     # Sends command to kick a buried job.
@@ -120,6 +129,21 @@ class Tuber
     # @api public
     def reserved?
       @reserved || self.stats.state == "reserved"
+    end
+
+    # Check if this object has deleted, released or buried the job.
+    #
+    # Known locally, without asking the server. False doesn't mean the job is
+    # still reserved: it may have been settled elsewhere, or lost to its ttr.
+    #
+    # @return [Boolean] Returns true once delete, release or bury has succeeded
+    # @example
+    #   job.delete
+    #   job.settled? # => true
+    #
+    # @api public
+    def settled?
+      !!@settled
     end
 
     # Check if the job still exists.

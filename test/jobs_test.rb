@@ -149,4 +149,57 @@ describe Tuber::Jobs do
       assert_equal 1, @beanstalk.tubes.find('tube_buried').stats.current_jobs_buried
     end
   end # for_process!
+
+  # Each command is a round trip to the server, so process! should send only
+  # the ones it needs. Commands before the reserve (watch, ignore) are set-up.
+  describe "for process! round trips" do
+    before do
+      cleanup_tubes!(['tube_trips'])
+      @trips = @beanstalk.tubes.find('tube_trips')
+      @ids = []
+    end
+
+    def commands_from_reserve(sent)
+      sent.drop_while { |command| command != 'reserve' }
+    end
+
+    it "should send reserve, stats-job and delete for a successful job" do
+      @jobs.register('tube_trips') { |job| @ids << job.id; @jobs.stop! }
+      @trips.put "trips success"
+      sent = record_commands
+      @jobs.process!
+      id = @ids.first
+      assert_equal ['reserve', "stats-job #{id}", "delete #{id}"], commands_from_reserve(sent)
+    end
+
+    it "should check stats once before releasing a job for retry" do
+      @jobs.register('tube_trips', :retry_on => [Timeout::Error]) do |job|
+        @ids << job.id
+        @jobs.stop!
+        raise Timeout::Error
+      end
+      @trips.put "trips retry", :pri => 100
+      sent = record_commands
+      @jobs.process!(:release_delay => 0)
+      id = @ids.first
+      assert_equal ['reserve', "stats-job #{id}", "stats-job #{id}", "release #{id} 100 0"],
+        commands_from_reserve(sent)
+      assert_equal 1, @trips.stats.current_jobs_ready
+    end
+
+    it "should not check on a job it has just buried" do
+      @jobs.register('tube_trips') do |job|
+        @ids << job.id
+        @jobs.stop!
+        raise RuntimeError
+      end
+      @trips.put "trips bury", :pri => 100
+      sent = record_commands
+      @jobs.process!
+      id = @ids.first
+      assert_equal ['reserve', "stats-job #{id}", "stats-job #{id}", "bury #{id} 100"],
+        commands_from_reserve(sent)
+      assert_equal 1, @trips.stats.current_jobs_buried
+    end
+  end # process! round trips
 end # Tuber::Jobs

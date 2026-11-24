@@ -61,6 +61,29 @@ class MiniTest::Unit::TestCase
     skip "requires a Tuber server with recurring schedules" unless $tuber_schedules
   end
 
+  # Records every command the client sends from now on, in order, while still
+  # sending it. Returns the array the commands are appended to.
+  #
+  # @example
+  #   sent = record_commands(@beanstalk)
+  #   job.delete
+  #   sent # => ["delete 12"]
+  #
+  def record_commands(client=nil)
+    client ||= @beanstalk
+    sent = []
+    recorder = Module.new do
+      define_method(:transmit) do |command, **options|
+        sent << command
+        # Empty **options must not be forwarded: on Ruby 2.7 it arrives as an
+        # extra positional {} at the receiver.
+        options.empty? ? super(command) : super(command, **options)
+      end
+    end
+    client.connection.singleton_class.prepend(recorder)
+    sent
+  end
+
   # Cleans up all jobs from specific tubes
   #
   # @example
