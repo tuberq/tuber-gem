@@ -249,7 +249,7 @@ end
 @tuber.jobs.process!
 ```
 
-The loop reserves a job, calls the matching handler, then: deletes on success, releases on `retry_on` errors, and buries on other exceptions. Raise `AbortProcessingError` to stop the loop.
+The loop reserves a job, calls the matching handler, then: deletes on success, releases on `retry_on` errors, and buries on other exceptions. A handler that releases, buries or deletes its own job keeps that choice: the loop leaves the job alone. Raise `AbortProcessingError` to stop the loop.
 
 ### Job Dependencies (Tuber only)
 

@@ -202,4 +202,53 @@ describe Tuber::Jobs do
       assert_equal 1, @trips.stats.current_jobs_buried
     end
   end # process! round trips
+
+  # A handler may settle its own job: release it for a retry, bury it, or
+  # delete it. process! must leave the job as the handler left it.
+  describe "for process! with a handler that settles its job" do
+    before do
+      cleanup_tubes!(['tube_settle'])
+      @settle = @beanstalk.tubes.find('tube_settle')
+    end
+
+    it "should keep a job the handler released" do
+      @jobs.register('tube_settle') { |job| job.release(:delay => 0); @jobs.stop! }
+      @settle.put "settle release"
+      @jobs.process!
+      refute_nil @settle.peek(:ready), "the released job was deleted"
+    end
+
+    it "should keep a job the handler released with a delay" do
+      @jobs.register('tube_settle') { |job| job.release(:delay => 30); @jobs.stop! }
+      @settle.put "settle release delayed"
+      @jobs.process!
+      refute_nil @settle.peek(:delayed), "the delayed job was deleted"
+    end
+
+    it "should keep a job the handler buried" do
+      @jobs.register('tube_settle') { |job| job.bury; @jobs.stop! }
+      @settle.put "settle bury"
+      @jobs.process!
+      refute_nil @settle.peek(:buried), "the buried job was deleted"
+    end
+
+    it "should stop without deleting a job the handler deleted" do
+      # A loop that never stops is left blocked in reserve. Run it on its own
+      # connection, so teardown isn't queued behind that reserve.
+      worker = Tuber.new(tuber_address)
+      jobs = Tuber::Jobs.new(worker)
+      ids = []
+      jobs.register('tube_settle') { |job| ids << job.id; job.delete; jobs.stop! }
+      @settle.put "settle delete"
+      sent = record_commands(worker)
+      begin
+        Timeout.timeout(5) { jobs.process! }
+      ensure
+        worker.close
+      end
+      id = ids.first
+      assert_equal ['reserve', "stats-job #{id}", "delete #{id}"],
+        sent.drop_while { |command| command != 'reserve' }
+    end
+  end # process! with a handler that settles its job
 end # Tuber::Jobs
