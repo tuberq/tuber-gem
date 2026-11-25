@@ -41,24 +41,26 @@ jobs:
         TUBER_TEST_ADDRESS: 127.0.0.1
 
   beanstalkd-compat:
-    name: beanstalkd compat (ruby ${{ matrix.ruby-version }})
+    # One Ruby is enough here: this job checks the protocol, and the Tuber job
+    # above covers every supported Ruby.
+    name: beanstalkd compat (ruby 4.0)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        ruby-version: ["2.7", "4.0"]
 
     steps:
     - uses: actions/checkout@v4
     - name: Download & Extract beanstalkd
       run: curl -L https://github.com/beanstalkd/beanstalkd/archive/refs/tags/v1.13.tar.gz | tar xz
     - name: Make beanstalkd
-      run: make
+      # beanstalkd 1.13 doesn't compile as C23, the default from gcc 15: prot.c
+      # drops the const that C23's memchr returns, and main.c's signal handler
+      # signature is rejected. Upstream hasn't released since 1.13, so build it
+      # as C17, keeping its own warning flags.
+      run: make CFLAGS='-std=gnu17 -Wall -Werror -Wformat=2 -g'
       working-directory: beanstalkd-1.13
     - name: Set up Ruby
       uses: ruby/setup-ruby@v1
       with:
-        ruby-version: ${{ matrix.ruby-version }}
+        ruby-version: "4.0"
         bundler-cache: true
     - name: Daemonize beanstalkd
       run: ./beanstalkd-1.13/beanstalkd -l 127.0.0.1 &
