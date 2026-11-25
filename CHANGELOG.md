@@ -4,6 +4,17 @@ The tuber gem is a fork of [beaneater](https://github.com/beanstalkd/beaneater),
 beaneater 1.1.4. Entries from 1.1.4 down are beaneater's history, kept for reference.
 (0.0.1 was an empty placeholder published to claim the gem name.)
 
+## 0.9.0 (November 25 2026)
+
+A `process!` loop that respects its handler and talks to the server less. A
+handler that released or buried its own job used to have that silently undone,
+and the loop asked the server about jobs it had just dealt with.
+
+* Fix `process!` deleting a job its handler had already released, buried or deleted. Tuber and beanstalkd both delete ready, delayed and buried jobs, so a retry the handler scheduled was lost, and a job it buried vanished. A handler that deleted its own job and called `stop!` left the loop blocked in `reserve`. The loop now leaves a job its handler settled alone. Behaviour change: a handler that releases or buries its job keeps that job. (#5)
+* `process!` sends only the commands it needs. A successful job takes `reserve`, `stats-job` and `delete`, one fewer than before. A job released for a retry takes four commands instead of eight, and a buried one four instead of six. (#3)
+* `Job#release` fetched the job's stats twice, even when given `:pri` and `:delay`. It now fetches them once, and not at all when given both. `Job#bury` no longer fetches them when given `:pri`. (#3)
+* Add `Job#settled?`, true once this object has deleted, released or buried the job. It is known locally, without asking the server. (#3)
+
 ## 0.8.0 (November 22 2026)
 
 Surviving a server whose host vanishes. A consumer blocked in `reserve` used to
