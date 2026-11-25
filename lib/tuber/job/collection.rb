@@ -123,6 +123,9 @@ class Tuber
 
     # Watch, reserve, process and delete or bury or release jobs.
     #
+    # A handler may release, bury or delete its own job; the loop then leaves
+    # the job as the handler left it.
+    #
     # @param [Hash{String => Integer}] options Settings for processing
     # @option options [Integer] release_delay Delay in seconds before to make job ready again
     # @option options [Integer] reserve_timeout Number of seconds to wait for a job before checking a different server
@@ -138,7 +141,9 @@ class Tuber
           processor = processors[@current_job.tube]
           begin
             processor[:block].call(@current_job)
-            @current_job.delete
+            # Deleting a job the handler released, buried or deleted would
+            # undo what it did.
+            @current_job.delete unless @current_job.settled?
           rescue *processor[:retry_on]
             stats = @current_job.stats
             if stats.releases < processor[:max_retries]
